@@ -239,7 +239,7 @@ list = await ed.list();
   const cabB = cat.blocks.findIndex((b) => b.label === "CAB"), it = cat.blocks[cabB].types.findIndex((t) => t.name === "USER IR");
   await ed.irTexts();
   const texts = ed.cat.blocks[cabB].types[it].params[0].texts, kv = texts.indexOf("MESA 4X1");
-  ok(it === 7 && kv >= 0 && ed.cat.blocks[cabB].types[it].params.map((p) => p.name).join() === "IR,LOW CUT,HIGH CUT",
+  ok(it === 7 && kv >= 0 && ed.cat.blocks[cabB].types[it].params.map((p) => p.name).join() === "IR,LOW CUT,HIGH CUT,BLEND,CLN PHASE",
      `IR: the CAB block's USER IR type offers it (knob ${kv})`);
   await ed.setType(cabB, it);
   ok(await ed.setParam(cabB, 0, kv) === kv && (await ed.state()).preset.type[cabB] === it, "IR: a sound uses it");

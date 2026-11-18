@@ -2,7 +2,8 @@ name: build
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, bass]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:

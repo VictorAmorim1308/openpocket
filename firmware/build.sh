@@ -50,6 +50,7 @@ fi
 # AC791N hardware FPU (same options as the JieLi SDK for the WL82) + DSP engine at 44.1 kHz
 FP="-mcpu=r3 -mfprev1"
 DSPDEF="-DPX_SR=44100.0f -DPX_OVERSAMPLE=4"
+DSPDEF="$DSPDEF -DPX_BASS=${OP_BASS:-1}"   # OpenPocket Bass: the bass factory presets and EQ -> AMP order (OP_BASS=0: the guitar ones)
 [ -n "$OP_BLE" ] && DSPDEF="$DSPDEF -DPXN_LEAN=1 -DPXN_HOT_RAM=1 -DPX_RUNS=0"   # v40.2: the test image's flash is full (engine/px_nam.c; v40.4: px_dsp.c PX_RUNS)
 INC="-I$HERE/inc -I$HERE/../engine"
 $CC $FP -Os -ffunction-sections -fno-builtin -Wall -Wno-unused-function $DSPDEF $BLEDEF -DOP_GUARD_STACK=$GUARD_STACK $INC \

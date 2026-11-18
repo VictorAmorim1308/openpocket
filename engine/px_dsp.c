@@ -331,8 +331,16 @@ static const char *const BLK_NAME[PX_NBLK] = {"NOISE GATE", "COMPRESSOR", "PITCH
                                               "AMP", "CABINET", "EQUALIZER", "MODULATION", "DELAY", "REVERB",
                                               "INSTRUMENT"};
 /* default processing order (v29: each preset carries its own) */
+#ifndef PX_BASS
+#define PX_BASS 0                                      /* 1: OpenPocket Bass (firmware/build.sh OP_BASS): bass presets */
+#endif
+#if PX_BASS                                            /* the EQ before the amp */
+static const uint8_t ORDER_DEF[PX_NBLK] = {PX_B_GATE, PX_B_PITCH, PX_B_COMP, PX_B_SFX, PX_B_SYN, PX_B_DRIVE, PX_B_EQ,
+                                           PX_B_AMP, PX_B_CAB, PX_B_MOD, PX_B_DELAY, PX_B_REVERB};   /* (the octaver first: it tracks the bass itself) */
+#else
 static const uint8_t ORDER_DEF[PX_NBLK] = {PX_B_GATE, PX_B_COMP, PX_B_PITCH, PX_B_SFX, PX_B_SYN, PX_B_DRIVE, PX_B_AMP,
                                            PX_B_CAB, PX_B_EQ, PX_B_MOD, PX_B_DELAY, PX_B_REVERB};
+#endif
 void px_order_default(uint8_t *o) { for (int i = 0; i < PX_NBLK; i++) o[i] = ORDER_DEF[i]; }
 int px_order_valid(const uint8_t *o)
 {
@@ -356,9 +364,12 @@ static const char *const PN_POLY[] = {"DRY", "OCT -1", "OCT +1"};
 static const char *const PN_WHAM[] = {"SHIFT", "MIX", "GLIDE"};
 static const char *const PN_HARM[] = {"INTERVAL", "MIX"};
 static const char *const PN_DET[] = {"CENTS", "MIX"};
+/* OpenPocket Bass: BASS OCTAVE. DRY, SUB -1 (the octave down), UP +1 (the octave up), TONE (the sub's filter), TRACK (the
+ * tracking filter: lower = steadier on the low strings, higher = follows the high notes) */
+static const char *const PN_BOCT[] = {"DRY", "SUB -1", "UP +1", "TONE", "TRACK"};
 static const tdef T_PITCH[PX_PIT_COUNT] = {
     {"OCTAVER", 5, PN_OCT}, {"POLY OCTAVE", 3, PN_POLY}, {"WHAMMY", 3, PN_WHAM}, {"HARMONIZER", 2, PN_HARM},
-    {"DETUNE", 2, PN_DET}};
+    {"DETUNE", 2, PN_DET}, {"BASS OCTAVE", 5, PN_BOCT}};
 
 static const char *const PN_AWAH[] = {"SENS", "RESO", "RANGE", "DECAY"};
 static const char *const PN_LWAH[] = {"RATE", "DEPTH", "RESO", "CENTER"};
@@ -477,10 +488,12 @@ static const cab_v CV[PX_CAB_COUNT] = {
 static const char *const PN_EQ5[] = {"100 HZ", "400 HZ", "1 KHZ", "2.5 KHZ", "6 KHZ"};
 static const char *const PN_GEQ[] = {"80 HZ", "240 HZ", "750 HZ", "2.2 KHZ", "6.6 KHZ"};
 static const char *const PN_PEQ[] = {"LOW", "MID FREQ", "MID GAIN", "MID Q", "HIGH"};
-static const tdef T_EQ[PX_EQ_COUNT] = {{"5 BAND", 5, PN_EQ5}, {"GRAPHIC 5", 5, PN_GEQ}, {"PARAMETRIC", 5, PN_PEQ}};
+static const tdef T_EQ[PX_EQ_COUNT] = {{"5 BAND", 5, PN_EQ5}, {"GRAPHIC 5", 5, PN_GEQ}, {"PARAMETRIC", 5, PN_PEQ},
+    {"BASS PEQ", 5, PN_PEQ}};   /* OpenPocket Bass: low shelf 80 Hz, mid 40 Hz..4 kHz, high shelf 3.5 kHz */
 
 /* ========================================================== modulation ===== */
 static const char *const PN_RDM[] = {"RATE", "DEPTH", "MIX"};
+static const char *const PN_BCH[] = {"RATE", "DEPTH", "MIX", "X-OVER"};   /* OpenPocket Bass */
 static const char *const PN_DIM[] = {"MODE", "MIX"};
 static const char *const PN_FLG[] = {"RATE", "DEPTH", "MANUAL", "FDBK", "MIX"};
 static const char *const PN_P90[] = {"SPEED", "DEPTH"};
@@ -493,7 +506,7 @@ static const char *const PN_ROT[] = {"SPEED", "DEPTH", "BALANCE"};
 static const tdef T_MOD[PX_MOD_COUNT] = {
     {"CE CHORUS", 3, PN_RDM}, {"DIMENSION", 2, PN_DIM}, {"FLANGER", 5, PN_FLG}, {"PHASE 90", 2, PN_P90},
     {"SMALL STONE", 3, PN_STN}, {"UNI-VIBE", 3, PN_UVB}, {"OPTO TREMOLO", 2, PN_RD}, {"BIAS TREMOLO", 3, PN_BTR},
-    {"HARMONIC TREM", 3, PN_HTR}, {"ROTARY", 3, PN_ROT}, {"VIBRATO", 2, PN_RD}};
+    {"HARMONIC TREM", 3, PN_HTR}, {"ROTARY", 3, PN_ROT}, {"VIBRATO", 2, PN_RD}, {"BASS CHORUS", 4, PN_BCH}};
 
 /* =============================================================== delay ===== */
 static const char *const PN_DT[] = {"TIME", "FDBK", "MIX", "TONE"};
@@ -519,7 +532,7 @@ static const tdef T_REV[PX_REV_COUNT] = {
 static const char *const PN_AMP[] = {"GAIN", "BASS", "MID", "TREBLE", "PRESENCE"};
 static const char *const PN_NAM[] = {"MODEL", "GAIN", "BASS", "MID", "TREBLE"};
 static const char *const PN_CAB[] = {"BODY", "BRIGHT", "MIC"};
-static const char *const PN_CABIR[] = {"IR", "LOW CUT", "HIGH CUT"};   /* v38 */
+static const char *const PN_CABIR[] = {"IR", "LOW CUT", "HIGH CUT", "BLEND", "CLN PHASE"};   /* v38; BLEND, CLN PHASE: OpenPocket Bass */
 
 const char *px_block_label(int b) { return (b >= 0 && b < PX_NBLK) ? BLK_LABEL[b] : "?"; }
 const char *px_block_name(int b)  { return (b >= 0 && b < PX_NBLK) ? BLK_NAME[b] : "?"; }
@@ -559,7 +572,7 @@ int px_nparams(int b, int t)
     if (t < 0 || t >= px_ntypes(b)) t = 0;
     if (b == PX_B_DRIVE) return DV[t].np;
     if (b == PX_B_AMP) return 5;
-    if (b == PX_B_CAB) return t == PX_CAB_DI ? 0 : 3;
+    if (b == PX_B_CAB) return t == PX_CAB_DI ? 0 : t == PX_CAB_IR ? 5 : 3;
     const tdef *d = tdef_of(b, t);
     return d ? d->np : 0;
 }
@@ -635,6 +648,10 @@ int px_type_v34(int blk, int old)
 /* v38: USER IR's LOW CUT 20..400 Hz and HIGH CUT 20 kHz (0: off) .. 2 kHz, logarithmic */
 static float ir_lo_hz(int v) { return 20.0f * powf(20.0f, (float)v * 0.01f); }
 static float ir_hi_hz(int v) { return 20000.0f * powf(0.1f, (float)v * 0.01f); }
+/* OpenPocket Bass: BASS OCTAVE's TRACK 100..500 Hz */
+static float boct_track_hz(int v) { return 100.0f + (float)(v > 100 ? 100 : v) * 4.0f; }
+/* OpenPocket Bass: BASS CHORUS's X-OVER 50..500 Hz, logarithmic (below it the bass stays dry) */
+static float bch_xo_hz(int v) { return 50.0f * powf(10.0f, (float)(v > 100 ? 100 : v) * 0.01f); }
 int px_param_text(int b, int t, int k, int v, char *buf)
 {
     if (v < 0) v = 0;
@@ -661,6 +678,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         }
         if (t == PX_CAB_IR && k == 1) { put_int(buf, (int)(ir_lo_hz(v) + 0.5f), 0); return 1; }
         if (t == PX_CAB_IR && k == 2) { put_int(buf, (int)(ir_hi_hz(v) + 0.5f), 0); return 1; }
+        if (t == PX_CAB_IR && k == 4) { put_str(buf, v < 50 ? "NORMAL" : "INVERT"); return 1; }
         break;
     case PX_B_AMP:
         if (t == PX_AMP_NAM && k == 0) {               /* the model's name */
@@ -675,6 +693,8 @@ int px_param_text(int b, int t, int k, int v, char *buf)
     case PX_B_PITCH:
         if (t == PX_PIT_HARMONY && k == 0) { put_str(buf, HARM_TXT[harm_idx(v)]); return 1; }
         if (t == PX_PIT_WHAMMY && k == 0) { float st = (x - 0.5f) * 48.0f; put_int(buf, (int)(st + (st >= 0 ? 0.5f : -0.5f)), 1); return 1; }
+        if (t == PX_PIT_BASSOCT && k == 3) { put_int(buf, (int)(60.0f + x * 540.0f + 0.5f), 0); return 1; }
+        if (t == PX_PIT_BASSOCT && k == 4) { put_int(buf, (int)(boct_track_hz(v) + 0.5f), 0); return 1; }
         if (t == PX_PIT_DETUNE && k == 0) { put_int(buf, (int)(3.0f + x * 27.0f + 0.5f), 0); return 1; }
         break;
     case PX_B_SFX:
@@ -685,12 +705,14 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         break;
     case PX_B_EQ:
         if (t == PX_EQ_PARAM && k == 1) { put_int(buf, (int)(150.0f * powf(33.0f, x) + 0.5f), 0); return 1; }
-        if (t == PX_EQ_PARAM && k == 3) { int q = (int)((0.4f + x * 5.6f) * 10.0f + 0.5f);
+        if (t == PX_EQ_BASS && k == 1) { put_int(buf, (int)(40.0f * powf(100.0f, x) + 0.5f), 0); return 1; }
+        if ((t == PX_EQ_PARAM || t == PX_EQ_BASS) && k == 3) { int q = (int)((0.4f + x * 5.6f) * 10.0f + 0.5f);
             buf[0] = (char)('0' + q / 10); buf[1] = '.'; buf[2] = (char)('0' + q % 10); buf[3] = 0; return 1; }
         { float db = (x - 0.5f) * 24.0f; put_int(buf, (int)(db + (db >= 0 ? 0.5f : -0.5f)), 1); return 1; }
     case PX_B_MOD:
         if (t == PX_MOD_DIMENSION && k == 0) { put_int(buf, 1 + (int)(x * 3.99f), 0); return 1; }
         if (t == PX_MOD_ROTARY && k == 0) { put_str(buf, v < 50 ? "SLOW" : "FAST"); return 1; }
+        if (t == PX_MOD_BASSCHO && k == 3) { put_int(buf, (int)(bch_xo_hz(v) + 0.5f), 0); return 1; }
         break;
     case PX_B_SYN:
         if ((t == PX_SYN_STRINGS || t == PX_SYN_CHOIR) && k == 0) { put_int(buf, (int)(syn_att_ms(x) + 0.5f), 0); return 1; }
@@ -747,8 +769,64 @@ int px_preset_count(void) { return NPRESETS; }
 #define NOGATE (p->on[PX_B_GATE] = 0)
 #define NAM(m, g, b, md, t) blk(p, PX_B_AMP, 1, PX_AMP_NAM, px_nam_knob(m), g, b, md, t)
 enum { M_TWIN, M_AC15, M_SUPER59, M_SHIRLCL, M_JCM900, M_SHIRLEY, M_JCM2000, M_MARK4, M_JVM, M_PROMOD, M_5150, M_6505 };
+#if PX_BASS
+/* OpenPocket Bass: EQ (BASS PEQ) -> AMP (NAM, the user slots U1..U4: load bass captures from the editor; an empty slot
+ * passes the bass through clean) -> CAB (USER IR, slots IR1..IR4, BLEND) -> MOD (BASS CHORUS). The other blocks off.
+ * Settings 0..100: EQ dB = (v - 50) x 0.24; MID FREQ 40 Hz x 100^(v/100); Q 0.4 + 5.6 v/100; IR LOW CUT 20 Hz x
+ * 20^(v/100) (46 = 80 Hz); HIGH CUT 20 kHz x 0.1^(v/100) (0 = off, 60 = 5 kHz) */
+#define UNAM(s, g) blk(p, PX_B_AMP, 1, PX_AMP_NAM, px_nam_knob(PX_NAM_NFACT + (s)), g, 50, 50, 50)
+#define BEQ(lo, mf, mg, mq, hi) blk(p, PX_B_EQ, 1, PX_EQ_BASS, lo, mf, mg, mq, hi)
+#define BIR(s, lc, hc, bl) blk(p, PX_B_CAB, 1, PX_CAB_IR, px_ir_knob(s), lc, hc, bl, 0)
+static void bass_factory(px_preset_t *p, int idx)
+{
+    base_preset(p);
+    for (int b = 0; b < PX_NBLK; b++) p->on[b] = 0;
+    blk(p, PX_B_COMP, 0, PX_CMP_STUDIO, 40, 40, 70, 60, 0);   /* (off: there if wanted) */
+    blk(p, PX_B_PITCH, 0, PX_PIT_BASSOCT, 70, 60, 0, 40, 30);
+    blk(p, PX_B_MOD, 0, PX_MOD_BASSCHO, 30, 50, 50, 50, 0);
+    blk(p, PX_B_GATE, 0, 0, 15, 50, 50, 0, 0);
+    BEQ(50, 50, 50, 11, 50);
+    UNAM(0, 50); BIR(0, 0, 0, 0);
+    switch (idx) {
+    case 0: setname(p, "DI LIMPO");
+        BEQ(55, 50, 50, 11, 52); p->on[PX_B_AMP] = 0; p->on[PX_B_CAB] = 0; break;
+    case 1: setname(p, "AMP 1");
+        UNAM(0, 50); BIR(0, 10, 50, 0); break;
+    case 2: setname(p, "AMP 1 BLEND");                  /* the clean lows under the amp: the wet's LOW CUT at 80 Hz */
+        UNAM(0, 55); BIR(0, 46, 55, 40); break;
+    case 3: setname(p, "AMP 2");
+        UNAM(1, 50); BIR(1, 10, 50, 0); break;
+    case 4: setname(p, "AMP 2 BLEND");
+        UNAM(1, 55); BIR(1, 46, 55, 40); break;
+    case 5: setname(p, "GROWL");                        /* low mids up (800 Hz), more gain, the clean holds the low end */
+        BEQ(50, 65, 67, 11, 55); UNAM(2, 68); BIR(2, 54, 60, 45); break;
+    case 6: setname(p, "SLAP");                         /* lows and highs up, 500 Hz down */
+        BEQ(67, 55, 25, 11, 67); UNAM(0, 45); BIR(0, 10, 0, 25);
+        blk(p, PX_B_COMP, 1, PX_CMP_STUDIO, 50, 50, 70, 60, 0); break;
+    case 7: setname(p, "CHORUS");
+        UNAM(0, 50); BIR(0, 10, 50, 20); blk(p, PX_B_MOD, 1, PX_MOD_BASSCHO, 30, 50, 50, 50, 0); break;
+    case 8: setname(p, "AMP 3"); UNAM(2, 50); BIR(2, 10, 50, 0); break;
+    case 9: setname(p, "AMP 4"); UNAM(3, 50); BIR(3, 10, 50, 0); break;
+    case 10: setname(p, "OITAVA");                      /* the octave down under the bass, a touch of the octave up */
+        blk(p, PX_B_PITCH, 1, PX_PIT_BASSOCT, 70, 65, 15, 40, 30); UNAM(0, 45); BIR(0, 10, 50, 30); break;
+    default: {                                          /* USER: EQ -> U1 -> IR1, flat, to start from */
+        char n[14] = "USER ";
+        n[5] = (char)('0' + (idx + 1) / 10); n[6] = (char)('0' + (idx + 1) % 10); n[7] = 0;
+        setname(p, n);
+    } break;
+    }
+}
+#undef UNAM
+#undef BEQ
+#undef BIR
+#endif
 void px_preset_factory(px_preset_t *p, int idx)
 {
+#if PX_BASS
+    if (idx < 0 || idx >= NPRESETS) idx = 0;
+    bass_factory(p, idx);
+    return;
+#endif
     base_preset(p);
     if (idx < 0 || idx >= NPRESETS) idx = 0;
     p->on[PX_B_AMP] = p->on[PX_B_CAB] = 1;
@@ -945,6 +1023,18 @@ static void rc_pitch(px_engine *e)
         bq_bandpass(&e->oct_bp, sr, 900.0f, 0.7f);
         bq_highpass(&e->oct_uphp, sr, 60.0f, 0.7f);
         e->oct_dry = f01(q[0]); e->oct_s1 = f01(q[1]) * 2.5f; e->oct_s2 = f01(q[2]) * 2.5f; e->oct_up = f01(q[3]) * 2.0f;
+        break;
+    case PX_PIT_BASSOCT:                               /* OpenPocket Bass: a flip-flop divider with a Schmitt trigger */
+        bq_lowpass(&e->oct_lp, sr, boct_track_hz(q[4]), 0.6f);
+        bq_lowpass(&e->oct_lp2, sr, boct_track_hz(q[4]), 0.6f);
+        bq_lowpass(&e->oct_sublp, sr, 60.0f + f01(q[3]) * 540.0f, 0.7f);   /* the square's edges: 60..600 Hz */
+        bq_lowpass(&e->oct_sublp2, sr, 60.0f + f01(q[3]) * 540.0f, 0.5f);
+        bq_lowpass(&e->oct_bp, sr, 1200.0f, 0.7f);    /* the octave up: the note's fundamental rectified */
+        bq_lowpass(&e->oct_ua, sr, boct_track_hz(q[4]), 0.6f);
+        bq_lowpass(&e->oct_ub, sr, boct_track_hz(q[4]), 0.6f);
+        bq_highpass(&e->oct_uphp, sr, 50.0f, 0.7f);
+        e->oct_ea = expf(-1.0f / (0.002f * sr)); e->oct_er = expf(-1.0f / (0.06f * sr));
+        e->oct_dry = f01(q[0]); e->oct_s1 = f01(q[1]) * 1.6f; e->oct_s2 = 0.0f; e->oct_up = f01(q[2]) * 2.5f;
         break;
     case PX_PIT_POLYOCT:                               /* two delay-line shifters: -12 and +12 */
         e->ps_nv = 2; e->ps_dry = f01(q[0]);
@@ -1619,6 +1709,8 @@ static void rc_cab_ir(px_engine *e)
     bq_highpass(&e->ir_lo, sr, ir_lo_hz(q[1]), 0.7071f);
     const float hi = ir_hi_hz(q[2]);
     if (hi >= sr * 0.45f) bq_ident(&e->ir_hi); else bq_lowpass(&e->ir_hi, sr, hi, 0.7071f);
+    e->ir_bl = f01(q[3]);                              /* OpenPocket Bass: BLEND, and the clean signal's polarity: an */
+    e->ir_cg = q[4] < 50 ? 1.0f : -1.0f;               /* amp whose output is upside down would cancel the lows */
 }
 
 /* px_engine_prepare's store: the last set made, and what it was made for */
@@ -1671,6 +1763,11 @@ static void rc_eq(px_engine *e)
         bq_peak(&e->eq[3], sr, 2200.0f, 1.4f, EQDB(3));
         bq_peak(&e->eq[4], sr, 6600.0f, 1.4f, EQDB(4));
         e->eq_n = 5;
+    } else if (t == PX_EQ_BASS) {                      /* OpenPocket Bass: a mid that sweeps down to the low B */
+        bq_lowshelf(&e->eq[0], sr, 80.0f, EQDB(0));
+        bq_peak(&e->eq[1], sr, 40.0f * powf(100.0f, f01(q[1])), 0.4f + f01(q[3]) * 5.6f, EQDB(2));
+        bq_highshelf(&e->eq[2], sr, 3500.0f, EQDB(4));
+        e->eq_n = 3;
     } else {
         bq_lowshelf(&e->eq[0], sr, 100.0f, EQDB(0));
         bq_peak(&e->eq[1], sr, 150.0f * powf(33.0f, f01(q[1])), 0.4f + f01(q[3]) * 5.6f, EQDB(2));
@@ -1694,6 +1791,14 @@ static void rc_mod(px_engine *e)
         e->mod_base = 0.006f * sr; e->mod_sweep = (0.0005f + 0.0055f * f01(q[1])) * sr;
         e->mod_mix = f01(q[2]);
         bq_lowpass(&e->mod_lp, sr, 6600.0f, 0.7f);
+        break;
+    case PX_MOD_BASSCHO:                               /* OpenPocket Bass: the chorus above X-OVER only */
+        e->mod_inc = (0.1f + r * r * 6.0f) / sr;
+        e->mod_base = 0.006f * sr; e->mod_sweep = (0.0005f + 0.0055f * f01(q[1])) * sr;
+        e->mod_mix = f01(q[2]);
+        bq_lowpass(&e->mod_lp, sr, 6600.0f, 0.7f);
+        bq_highpass(&e->mod_hpw, sr, bch_xo_hz(q[3]), 0.7071f);
+        bq_highpass(&e->mod_hpd, sr, bch_xo_hz(q[3]), 0.7071f);
         break;
     case PX_MOD_DIMENSION: {
         static const float RATE[4] = {0.25f, 0.25f, 0.5f, 0.5f}, DEP[4] = {0.0005f, 0.0009f, 0.0007f, 0.0012f};
@@ -2161,7 +2266,7 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
     px_may_load = 0;                                   /* (nothing read from the flash here: see px_engine_change) */
     if (px_order_valid(p->order)) for (int i = 0; i < PX_NBLK; i++) e->ord[i] = p->order[i];
     for (int b = 0; b < PX_NBLK; b++) {
-        if (!memcmp(old.p[b], p->p[b], b == PX_B_CAB ? 3 : PX_NPAR)) continue;   /* (CAB: 3 settings) */
+        if (!memcmp(old.p[b], p->p[b], b == PX_B_CAB && p->type[b] % PX_CAB_COUNT != PX_CAB_IR ? 3 : PX_NPAR)) continue;   /* (CAB: 3 settings; USER IR: 5) */
         switch (b) {
         case PX_B_GATE: case PX_B_COMP: rc_dyn(e); break;
         case PX_B_PITCH: rc_pitch(e); break;
@@ -3415,6 +3520,12 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
         return;
     }
     int s_lo = 0, s_hi = nam ? ip_amp : ns;
+    /* OpenPocket Bass: the clean signal at the amp's input (or the drive's, when they are one section), for USER IR's
+     * BLEND: taken here (cl_have), or with the pipeline left by PX_PART_PRE in e->cln_w and found by PX_PART_POST in
+     * e->cln_r. Without an amp before the cabinet the BLEND mixes the cabinet's own input. */
+    float clb[PX_MAX_BLOCK];
+    int cl_have = 0;
+    const int cl_at = pair ? ip_drv : ip_amp;
     const int p0 = part == PX_PART_POST, p1 = part == PX_PART_PRE ? 1 : nam ? 2 : 1;
     for (int pass = p0; pass < p1; pass++) {
     if (pass == 1) {
@@ -3453,10 +3564,24 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
         const int fading = p->on[sblk] && (fa < 1.0f || fz < 1.0f);   /* (GATE runs off too: not a fade) */
         float dryb[PX_MAX_BLOCK];
         if (fading) for (int k = 0; k < n; k++) dryb[k] = xb[k];
+        if (!nam && s == cl_at) { for (int k = 0; k < n; k++) clb[k] = xb[k]; cl_have = 1; }   /* (Bass: BLEND's source) */
         if (sblk == PX_B_CAB) {                          /* cabinet: its filters one after the other over the block */
             if (p->on[PX_B_CAB] && p->type[PX_B_CAB] % PX_CAB_COUNT == PX_CAB_IR) {   /* v38: an impulse response */
+                const float bl0 = e->ir_bz, bl1 = e->ir_bl;
+                const float *cs = 0;                     /* OpenPocket Bass: BLEND's clean signal */
+                if (bl0 > 0.0f || bl1 > 0.0f) {
+                    if (part == PX_PART_POST) cs = e->cln_r;
+                    else if (cl_have) cs = clb;
+                    else { for (int k = 0; k < n; k++) clb[k] = xb[k]; cs = clb; }   /* (no amp before: the IR's input) */
+                }
                 if (ir_ok && n == IR_B) ir_run(xb);      /* (blocks of 64 as on the pedal; other sizes pass) */
                 bq_block2(&e->ir_lo, &e->ir_hi, xb, n);
+                if (cs) {                                /* wet (1 - b) + clean * CLEAN LV * b, b ramped over the block */
+                    const float db = (bl1 - bl0) / (float)n, cg = e->ir_cg;
+                    float b = bl0;
+                    for (int k = 0; k < n; k++) { b += db; xb[k] += (cs[k] * cg - xb[k]) * b; }
+                }
+                e->ir_bz = bl1;
                 for (int k = 0; k < n; k++) xb[k] *= strim;
             } else if (p->on[PX_B_CAB] && e->cab_n) {
                 if (px_fx_int) fq_chain(e->cab, (px_fq *)e->fq_cab, e->cab_n, xb, n);
@@ -3552,7 +3677,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
             syn_organ_run(e, syn_t == PX_SYN_ORGAN, xb, n, strim);
             goto faded;
         }
-        if (sblk == PX_B_PITCH && p->on[PX_B_PITCH] && pit_t != PX_PIT_OCTAVER) {
+        if (sblk == PX_B_PITCH && p->on[PX_B_PITCH] && pit_t != PX_PIT_OCTAVER && pit_t != PX_PIT_BASSOCT) {
             pitch_run(e, pit_t == PX_PIT_WHAMMY, xb, n, strim);
             goto faded;
         }
@@ -3617,6 +3742,25 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     float u = px_abs(bq_run(&e->oct_bp, x));
                     u = bq_run(&e->oct_uphp, u);
                     x = x * e->oct_dry + s1 * e->oct_s1 + s2 * e->oct_s2 + u * e->oct_up;
+                } else if (pit_t == PX_PIT_BASSOCT) {   /* OpenPocket Bass */
+                    const float b = bq_run(&e->oct_lp2, bq_run(&e->oct_lp, x));
+                    const float a = px_abs(b);
+                    e->oct_env = a + (e->oct_env - a) * (a > e->oct_env ? e->oct_ea : e->oct_er);
+                    const float h = e->oct_env * 0.25f;   /* Schmitt trigger: a crossing counts only past +-h */
+                    if (e->oct_n < 1 << 20) e->oct_n++;
+                    if (e->oct_prev <= 0.0f && b > h && e->oct_env > 0.001f) {
+                        e->oct_prev = 1.0f; e->oct_ff = -e->oct_ff;
+                        const int T = e->oct_n;          /* a period: the octave up's filter follows the note */
+                        e->oct_n = 0;
+                        if (T > (int)(sr / 600.0f) && T < (int)(sr / 25.0f)) {
+                            const float fc = 1.25f * sr / (float)T;
+                            bq_lowpass(&e->oct_ua, sr, fc, 0.6f); bq_lowpass(&e->oct_ub, sr, fc, 0.6f);
+                        }
+                    } else if (e->oct_prev > 0.0f && b < -h) e->oct_prev = -1.0f;
+                    const float s1 = bq_run(&e->oct_sublp2, bq_run(&e->oct_sublp, e->oct_ff * e->oct_env));
+                    const float f1 = bq_run(&e->oct_ub, bq_run(&e->oct_ua, x));
+                    const float u = bq_run(&e->oct_bp, bq_run(&e->oct_uphp, px_abs(f1)));
+                    x = x * e->oct_dry + s1 * e->oct_s1 + u * e->oct_up;
                 } else {
 #if !PX_RUNS                                           /* (with the runs: pitch_run) */
                     e->ps_buf[e->ps_w] = x;
@@ -3746,6 +3890,15 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     if (++e->mod_w >= 2048) e->mod_w = 0;
                     x = x * (1.0f - 0.5f * e->mod_mix) + wet * 0.5f * e->mod_mix;
                 } break;
+                case PX_MOD_BASSCHO: {                   /* OpenPocket Bass: the chorus law above X-OVER, the lows dry */
+                    float tri = lfo_tri(e->mod_ph);
+                    e->mod_buf[e->mod_w] = x;
+                    float wet = mod_tap(e, e->mod_base + e->mod_sweep * (0.5f + 0.5f * tri));
+                    wet = bq_run(&e->mod_hpw, bq_run(&e->mod_lp, wet));
+                    const float xh = bq_run(&e->mod_hpd, x);
+                    if (++e->mod_w >= 2048) e->mod_w = 0;
+                    x = x + 0.5f * e->mod_mix * (wet - xh);
+                } break;
                 case PX_MOD_FLANGER: case PX_MOD_VIBRATO: {
                     float d = e->mod_base + e->mod_sweep * (0.5f + 0.5f * (mod_t == PX_MOD_FLANGER ? lfo_tri(e->mod_ph) : l));
                     float wet = mod_tap(e, d);
@@ -3823,6 +3976,8 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
     if (nam && pass == 0) {
         float *d = part == PX_PART_PRE ? out : e->nam_buf;
         for (int k = 0; k < n; k++) d[k] = xb[k];
+        if (part == PX_PART_PRE) { if (e->cln_w) for (int k = 0; k < n; k++) e->cln_w[k] = xb[k]; }   /* (Bass: BLEND) */
+        else { for (int k = 0; k < n; k++) clb[k] = xb[k]; cl_have = 1; }
         continue;
     }
     for (int k = 0; k < n; k++) {

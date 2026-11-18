@@ -311,7 +311,7 @@ static void fm1_fault(const fm1_crash_t *c)
 #define OP_VERSION_NUM "42"
 #endif
 #ifndef OP_TAG
-#define OP_TAG ""
+#define OP_TAG " BASS"                     /* OpenPocket Bass: shown at boot after the version */
 #endif
 #ifndef OP_GUARD_STACK      /* hardware stack-limit guard (fm1_guard.h). build.sh turns it off for the Bluetooth test image, */
 #define OP_GUARD_STACK 1    /* whose task stacks (ble_os.c) lie outside [_ustack_lo, _sstack_top]; app.ld checks this at link time */

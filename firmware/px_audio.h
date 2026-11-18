@@ -250,13 +250,16 @@ static int a_hwait(void) { return fm1_cpu1_wait(); }
  * before the amp on this block; then both run the network on this block (CPU1 as its helper). PRE and POST never touch
  * the same block's state (tests/engine/pipe_test.c: the same output as one core, one block later). */
 static float a_nb[2][A_FR];                            /* the network's output: being made / the previous block's */
+static float a_cln[2][A_FR];                            /* OpenPocket Bass: each one's clean signal (USER IR's BLEND) */
 static uint8_t a_nbi, a_nbv, a_prun;                  /* a_nb[a_nbi] is this block's; a_nbv: the other one holds one */
 static void post_run(uint32_t prev, int run, int nbv)   /* run: the engine on; nbv: a_nb[prev] holds a block */
 {
     if (g_eng.wl_on) px_wet_run(&g_eng, 0u, 0);       /* v39.1: the lanes (the previous block's sends), first */
     if (run && nbv) {
-        for (uint32_t o = 0; o < A_FR; o += PX_MAX_BLOCK)
+        for (uint32_t o = 0; o < A_FR; o += PX_MAX_BLOCK) {
+            g_eng.cln_r = a_cln[prev] + o;
             px_engine_part(&g_eng, a_nb[prev] + o, a_out + o, PX_MAX_BLOCK, PX_PART_POST);
+        }
     } else if (!run) {
         for (uint32_t i = 0; i < A_FR; i++) a_out[i] = a_in[i];
     } else for (uint32_t i = 0; i < A_FR; i++) a_out[i] = 0.0f;   /* the pipeline's first block */
@@ -283,7 +286,7 @@ static void dsp_pipe_run(int run)                      /* run: the engine on (el
     const int job = fm1_cpu1_run(run ? pipe_job : post_job, prev);
     if (run && !job) pxn_srv_end();
     if (run) for (uint32_t o = 0; o < A_FR; o += PX_MAX_BLOCK)
-        px_engine_part(&g_eng, a_in + o, a_nb[a_nbi] + o, PX_MAX_BLOCK, PX_PART_PRE);
+        { g_eng.cln_w = a_cln[a_nbi] + o; px_engine_part(&g_eng, a_in + o, a_nb[a_nbi] + o, PX_MAX_BLOCK, PX_PART_PRE); }
     const uint32_t tpre = fm1_ticks();
     if (!job) post_job(prev);                          /* (CPU1 off: here) */
     if (run) for (uint32_t o = 0; o < A_FR; o += PX_MAX_BLOCK)
@@ -424,7 +427,7 @@ static void dsp_lp_run(int run, uint32_t t_irq)
     uint32_t ta = 0;
     if (run) {
         for (uint32_t o = 0; o < A_FR; o += PX_MAX_BLOCK)
-            px_engine_part(&g_eng, a_in + o, a_nb[a_nbi] + o, PX_MAX_BLOCK, PX_PART_PRE);
+            { g_eng.cln_w = a_cln[a_nbi] + o; px_engine_part(&g_eng, a_in + o, a_nb[a_nbi] + o, PX_MAX_BLOCK, PX_PART_PRE); }
         ta = fm1_ticks();
         if (!a_lpe1 && a_lpw) {
             /* the first two blocks after a change: CPU1's other work is not timed yet, and it has little (the pipeline
@@ -490,7 +493,8 @@ static void a_collect(void)                            /* collects the block in 
 #endif
 }
 
-/* ---- tuner: the interrupt stores the input decimated by 4 (11025 Hz); the main loop estimates the note ---- */
+/* ---- tuner: the interrupt stores the input decimated by 8 (5512.5 Hz: OpenPocket Bass, down to the low B at 30.9 Hz;
+ * it was by 4, 61 Hz and up); the main loop estimates the note ---- */
 #define TN_N 1024u
 #if OP_BLE_TEST   /* the Bluetooth test image: the buffers in the cache RAM (app.ld CRAM); without it (pxc_init failed) no tuner */
 #define TN_MEM __attribute__((section(".cram.tuner")))
@@ -505,19 +509,20 @@ static void tn_capture(const float *x, uint32_t n)
 {
     if (!TN_READY) return;
     uint32_t w = tn_w;
-    for (uint32_t i = 0; i + 3u < n; i += 4u) {
-        tn_buf[w] = (x[i] + x[i + 1u] + x[i + 2u] + x[i + 3u]) * 0.25f;
+    for (uint32_t i = 0; i + 7u < n; i += 8u) {
+        tn_buf[w] = (x[i] + x[i + 1u] + x[i + 2u] + x[i + 3u] + x[i + 4u] + x[i + 5u] + x[i + 6u] + x[i + 7u]) * 0.125f;
         w = (w + 1u) & (TN_N - 1u);
     }
     tn_w = w;
 }
-#define TN_W 600u
-#define TN_TMAX 180u
+#define TN_SR 5512.5f
+#define TN_W 420u                                     /* two periods of the lowest note */
+#define TN_TMAX 200u                                  /* 27.6 Hz */
 static float tn_lin[TN_W + TN_TMAX] TN_MEM;   /* the newest W + TMAX samples in order: all the difference function reads */
-static float tn_d[200] TN_MEM;
+static float tn_d[TN_TMAX + 2u] TN_MEM;
 static float tuner_estimate(void)      /* frequency in Hz, or 0 (silence / unclear). YIN algorithm. */
 {
-    const uint32_t W = TN_W, TMIN = 10u, TMAX = TN_TMAX;  /* 61 Hz .. 1100 Hz at 11025 Hz */
+    const uint32_t W = TN_W, TMIN = 10u, TMAX = TN_TMAX;  /* 27.6 Hz .. 551 Hz at 5512.5 Hz */
     uint32_t w = tn_w;
     float e = 0.0f;
     if (!TN_READY) return 0.0f;
@@ -546,7 +551,7 @@ static float tuner_estimate(void)      /* frequency in Hz, or 0 (silence / uncle
     }
     float a = tn_d[best - 1u], b = tn_d[best], c = tn_d[best + 1u], den = a - 2.0f * b + c;
     float tf = (float)best + ((den != 0.0f) ? 0.5f * (a - c) / den : 0.0f);
-    return 11025.0f / tf;
+    return TN_SR / tf;
 }
 
 /* v40.2: OP_TESTSIG 1 (measurements only, never a release): a synthetic guitar replaces the input, so the effects that

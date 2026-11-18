@@ -37,7 +37,8 @@ enum { PX_B_GATE, PX_B_COMP, PX_B_PITCH, PX_B_SFX, PX_B_DRIVE, PX_B_AMP, PX_B_CA
 #define PX_NPAR 5
 
 enum { PX_CMP_SQUASH, PX_CMP_STUDIO, PX_CMP_OPTO, PX_CMP_SWELL, PX_CMP_COUNT };
-enum { PX_PIT_OCTAVER, PX_PIT_POLYOCT, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE, PX_PIT_COUNT };
+enum { PX_PIT_OCTAVER, PX_PIT_POLYOCT, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE,
+       PX_PIT_BASSOCT, PX_PIT_COUNT };   /* BASS OCTAVE (OpenPocket Bass): analog, one note at a time */
 enum { PX_SFX_AUTOWAH, PX_SFX_LFOWAH, PX_SFX_RING, PX_SFX_CRUSH, PX_SFX_SLICER, PX_SFX_LOFI, PX_SFX_SYNTH, PX_SFX_COUNT };
 enum { PX_DRV_TS9, PX_DRV_KLON, PX_DRV_M77, PX_DRV_HM2, PX_DRV_COUNT };
 enum { PX_AMP_TWIN, PX_AMP_AC15, PX_AMP_JCM900, PX_AMP_JCM2000, PX_AMP_MARK4, PX_AMP_SHIRLEY, PX_AMP_PROMOD,
@@ -59,9 +60,10 @@ enum { PX_CAB_112JN, PX_CAB_212BLUE, PX_CAB_412GB, PX_CAB_412T75, PX_CAB_412V30,
 #define PX_IR_LEN 1024
 enum { PX_SYN_ORGAN, PX_SYN_CHURCH, PX_SYN_STRINGS, PX_SYN_CHOIR, PX_SYN_MONO, PX_SYN_PWM, PX_SYN_BASS,
        PX_SYN_12STR, PX_SYN_ACOUSTIC, PX_SYN_SITAR, PX_SYN_BARI, PX_SYN_COUNT };
-enum { PX_EQ_5BAND, PX_EQ_GEQ, PX_EQ_PARAM, PX_EQ_COUNT };
+enum { PX_EQ_5BAND, PX_EQ_GEQ, PX_EQ_PARAM, PX_EQ_BASS, PX_EQ_COUNT };   /* BASS PEQ: OpenPocket Bass */
 enum { PX_MOD_CHORUS, PX_MOD_DIMENSION, PX_MOD_FLANGER, PX_MOD_PHASE90, PX_MOD_STONE, PX_MOD_UNIVIBE,
-       PX_MOD_OPTOTREM, PX_MOD_BIASTREM, PX_MOD_HARMTREM, PX_MOD_ROTARY, PX_MOD_VIBRATO, PX_MOD_COUNT };
+       PX_MOD_OPTOTREM, PX_MOD_BIASTREM, PX_MOD_HARMTREM, PX_MOD_ROTARY, PX_MOD_VIBRATO,
+       PX_MOD_BASSCHO, PX_MOD_COUNT };   /* BASS CHORUS (OpenPocket Bass): the lows below X-OVER stay dry */
 enum { PX_DLY_DIGITAL, PX_DLY_ANALOG, PX_DLY_MEMORY, PX_DLY_TAPE, PX_DLY_SPACE, PX_DLY_REVERSE, PX_DLY_LOFI,
        PX_DLY_DUAL, PX_DLY_COUNT };
 enum { PX_REV_ROOM, PX_REV_HALL, PX_REV_CATHEDRAL, PX_REV_PLATE, PX_REV_SPRING, PX_REV_SHIMMER, PX_REV_GATED,
@@ -164,6 +166,8 @@ typedef struct {
     float ps_ph[2], ps_inc[2], ps_W[2], ps_lvl[2], ps_off[2][2], ps_dry, ps_r, ps_rt, ps_glide, ps_invW;
     px_bq oct_lp, oct_lp2, oct_sublp, oct_sublp2, oct_bp, oct_uphp;
     float oct_env, oct_ff, oct_ff2, oct_prev, oct_dry, oct_s1, oct_s2, oct_up;
+    float oct_ea, oct_er;                              /* BASS OCTAVE: its envelope (attack, release); the octave up's */
+    px_bq oct_ua, oct_ub; int oct_n;                   /* filter, set at 1.25 x the note found (oct_n: samples since) */
     /* special fx */
     float sfx_lo, sfx_bp, sfx_env, sfx_ph, sfx_ph2, sfx_inc, sfx_ff, sfx_prev, sfx_g;
     float sfx_a, sfx_b, sfx_c, sfx_d, sfx_mix, sfx_qd;
@@ -215,12 +219,19 @@ typedef struct {
     px_cabd cd; int cab_rw, cab_firon;
     int   ir_slot;                                     /* v38: the IR loaded (-1: none; its spectra: px_dsp.c) */
     px_bq ir_lo, ir_hi;                                /* its LOW CUT and HIGH CUT */
+    /* OpenPocket Bass: USER IR's BLEND (the clean signal taken at the amp's input, mixed with amp + IR) and CLN PHASE
+     * (ir_cg: +1 or -1).
+     * cln_w / cln_r: with the two-core pipeline, where PX_PART_PRE leaves this block's clean signal and where
+     * PX_PART_POST finds the clean signal of the block it plays (the caller's, one block apart; 0 = none) */
+    float ir_bl, ir_bz, ir_cg;
+    float *cln_w; const float *cln_r;
     /* eq */
     px_bq eq[5]; int eq_n;
     /* modulation */
     float mod_buf[2048]; int mod_w;
     float mod_ph, mod_inc, mod_depth, mod_mix, mod_fb, mod_base, mod_sweep, mod_shape;
     px_bq mod_lp;
+    px_bq mod_hpw, mod_hpd;                            /* BASS CHORUS: X-OVER on the wet and on the dry */
     float ph_z[4], ph_fb, ph_lo, ph_hi, uv_k[4], uv_lamp, uv_up, uv_dn, trem_g, trem_att, trem_rel;
     float rot_h, rot_d, rot_hs, rot_ds, rot_ht, rot_dt, rot_hk, rot_dk, rot_bal;
     /* delay */
