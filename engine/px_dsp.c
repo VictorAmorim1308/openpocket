@@ -71,7 +71,7 @@ static inline float lfo_tri(float ph) { return 4.0f * px_abs(ph - 0.5f) - 1.0f; 
  * on the wet and the dry; BASS OCTAVE's envelope (attack, release) and the octave up's filter, set at 1.25 x the note
  * found (oct_n: samples since the last) */
 static struct {
-    float ir_bl, ir_bz, ir_cg;
+    float ir_bl, ir_bz, ir_cg; int ir_src;           /* ir_src: BLEND SRC, 0 = DI (the amp's input), 1 = AMP (the IR's input) */
     px_bq mod_hpw, mod_hpd;
     float oct_ea, oct_er;
     px_bq oct_ua, oct_ub;
@@ -546,7 +546,12 @@ static const tdef T_REV[PX_REV_COUNT] = {
 static const char *const PN_AMP[] = {"GAIN", "BASS", "MID", "TREBLE", "PRESENCE"};
 static const char *const PN_NAM[] = {"MODEL", "GAIN", "BASS", "MID", "TREBLE"};
 static const char *const PN_CAB[] = {"BODY", "BRIGHT", "MIC"};
-static const char *const PN_CABIR[] = {"IR", "LOW CUT", "HIGH CUT", "BLEND", "CLN PHASE"};   /* v38; BLEND, CLN PHASE: OpenPocket Bass */
+static const char *const PN_CABIR[] = {"IR", "LOW CUT", "HIGH CUT", "BLEND", "BLEND SRC"};   /* v38; BLEND, BLEND SRC: OpenPocket Bass */
+/* BLEND SRC: what BLEND mixes with amp + IR. DI: the clean bass at the amp's input (the whole chain from the amp on is
+ * dosed); AMP: the amp's output without the IR (only the cabinet is dosed). INV: that signal upside down (an amp or an IR
+ * that turns the lows over would cancel them). 0..24 DI, 25..49 AMP, 50..74 AMP INV, 75..100 DI INV (so the earlier
+ * CLN PHASE NORMAL (0) and INVERT (100) keep their meaning) */
+static int ir_src_of(int v) { return v < 25 ? 0 : v < 50 ? 1 : v < 75 ? 3 : 2; }   /* bit 0: AMP, bit 1: INV */
 
 const char *px_block_label(int b) { return (b >= 0 && b < PX_NBLK) ? BLK_LABEL[b] : "?"; }
 const char *px_block_name(int b)  { return (b >= 0 && b < PX_NBLK) ? BLK_NAME[b] : "?"; }
@@ -692,7 +697,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         }
         if (t == PX_CAB_IR && k == 1) { put_int(buf, (int)(ir_lo_hz(v) + 0.5f), 0); return 1; }
         if (t == PX_CAB_IR && k == 2) { put_int(buf, (int)(ir_hi_hz(v) + 0.5f), 0); return 1; }
-        if (t == PX_CAB_IR && k == 4) { put_str(buf, v < 50 ? "NORMAL" : "INVERT"); return 1; }
+        if (t == PX_CAB_IR && k == 4) { static const char *const S[4] = {"DI", "AMP", "DI INV", "AMP INV"}; put_str(buf, S[ir_src_of(v)]); return 1; }
         break;
     case PX_B_AMP:
         if (t == PX_AMP_NAM && k == 0) {               /* the model's name */
@@ -1730,7 +1735,8 @@ static void rc_cab_ir(px_engine *e)
     const float hi = ir_hi_hz(q[2]);
     if (hi >= sr * 0.45f) bq_ident(&e->ir_hi); else bq_lowpass(&e->ir_hi, sr, hi, 0.7071f);
     pxb.ir_bl = f01(q[3]);                              /* OpenPocket Bass: BLEND, and the clean signal's polarity: an */
-    pxb.ir_cg = q[4] < 50 ? 1.0f : -1.0f;               /* amp whose output is upside down would cancel the lows */
+    pxb.ir_src = ir_src_of(q[4]) & 1;
+    pxb.ir_cg = ir_src_of(q[4]) & 2 ? -1.0f : 1.0f;               /* amp whose output is upside down would cancel the lows */
 }
 
 /* px_engine_prepare's store: the last set made, and what it was made for */
@@ -3591,7 +3597,8 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                 const float bl0 = pxb.ir_bz, bl1 = pxb.ir_bl;
                 const float *cs = 0;                     /* OpenPocket Bass: BLEND's clean signal */
                 if (bl0 > 0.0f || bl1 > 0.0f) {
-                    if (part == PX_PART_POST) cs = px_cln_r;
+                    if (pxb.ir_src) { for (int k = 0; k < n; k++) clb[k] = xb[k]; cs = clb; }   /* AMP: the IR's input */
+                    else if (part == PX_PART_POST) cs = px_cln_r;
                     else if (cl_have) cs = clb;
                     else { for (int k = 0; k < n; k++) clb[k] = xb[k]; cs = clb; }   /* (no amp before: the IR's input) */
                 }

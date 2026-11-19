@@ -11,7 +11,7 @@ Os outros blocos continuam no firmware, só que desligados nos presets de baixo.
 | Onde | O quê |
 | --- | --- |
 | EQ, tipo **BASS PEQ** | LOW (shelf em 80 Hz, ±12 dB) · MID FREQ (**40 Hz a 4 kHz**) · MID GAIN (±12 dB) · MID Q (0.4 a 6.0) · HIGH (shelf em 3,5 kHz, ±12 dB). O PARAMETRIC original só descia até 150 Hz. |
-| CAB, tipo **USER IR** | Ganhou **BLEND** (0 = só amp+IR; 100 = só o limpo) e **CLN PHASE** (NORMAL / INVERT). O sinal limpo é pego **na entrada do amp**, ou seja, depois do EQ. |
+| CAB, tipo **USER IR** | Ganhou **BLEND** (0 = só amp+IR, 100 = só a outra fonte) e **BLEND SRC**, que escolhe a fonte: **DI** é o baixo limpo pego na entrada do amp, então o BLEND doseia o amp e o IR juntos. **AMP** é a saída do amp sem o IR, então o BLEND doseia só a caixa. **DI INV** e **AMP INV** são as mesmas fontes com a polaridade invertida. |
 | PITCH, tipo **BASS OCTAVE** | Oitavador analógico de uma nota só (divisor flip-flop): DRY · SUB −1 · UP +1 · TONE (60 a 600 Hz, filtro do sub) · TRACK (100 a 500 Hz; mais baixo deixa o rastreio mais firme nas cordas graves). O disparo tem histerese pra não "gaguejar" no fim da nota, e o filtro da oitava acima acompanha a nota tocada. Fica **antes do EQ**, onde rastreia o baixo limpo. |
 | MOD, tipo **BASS CHORUS** | RATE · DEPTH · MIX · **X-OVER** (50 a 500 Hz). Abaixo do X-OVER o grave passa seco, no estilo dos chorus de baixo. |
 | Afinador | Agora lê de **27,6 Hz a 551 Hz**: Si grave (30,9 Hz) do baixo de 5 cordas, Mi grave (41,2 Hz) e harmônicos na 12ª casa. O original começava em 61 Hz. |
@@ -22,7 +22,7 @@ Os outros blocos continuam no firmware, só que desligados nos presets de baixo.
 
 1. Carregue uma captura NAM **A2** de amp de baixo no slot U1 e um IR no slot IR1, pelo editor web (painéis "NAM models" e "IRs").
 2. Abra o preset **03 AMP 1 BLEND**. O IR tem LOW CUT em 80 Hz, então o grave vem do sinal limpo e o amp entra por cima.
-3. Gire o **BLEND**. Se o grave **diminuir** quando o BLEND chega perto do meio, troque **CLN PHASE** para INVERT. Algumas capturas invertem a polaridade do grave. Nos 12 amps de fábrica, por exemplo, 8 pedem INVERT (veja `tests/engine/bass_test.c`, parte 3).
+3. Gire o **BLEND**. Se o grave **diminuir** quando o BLEND chega perto do meio, troque **BLEND SRC** para DI INV (ou AMP INV). Algumas capturas invertem a polaridade do grave. Nos 12 amps de fábrica, por exemplo, 8 pedem INVERT (veja `tests/engine/bass_test.c`, parte 3).
 4. Acerte o volume final no **PRESET LVL** (página GT, 3º ajuste).
 
 O limpo e o amp chegam alinhados no tempo também no modo de dois núcleos: o firmware guarda o limpo de cada bloco de áudio junto com a saída do NAM (`a_cln` em `firmware/px_audio.h`). O teste confere isso bit a bit.

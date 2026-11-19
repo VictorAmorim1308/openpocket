@@ -112,7 +112,7 @@ int main(void)
         run_plain(&p0, sig, a, FR * NB);
         bass_preset(&pdi, 0, 100, 1);                   /* at BLEND 0 the clean path is not heard */
         run_plain(&pdi, sig, b, FR * NB);
-        CHECK(!memcmp(a, b, sizeof a), "BLEND 0: CLN PHASE changes nothing");
+        CHECK(!memcmp(a, b, sizeof a), "BLEND 0: BLEND SRC changes nothing");
         bass_preset(&p100, 100, 0, 1);                  /* BLEND 100: the same as amp off + cab off */
         run_plain(&p100, sig, a, FR * NB);
         px_preset_t q = p100; q.on[PX_B_AMP] = 0; q.on[PX_B_CAB] = 0;
@@ -126,11 +126,36 @@ int main(void)
         run_plain(&p100, sig, a, FR * NB);
         err = 0;
         for (int i = 4096; i < FR * NB; i++) err += (a[i] + b[i]) * (a[i] + b[i]);
-        snprintf(m, sizeof m, "CLN PHASE INVERT: the clean signal upside down (difference %.1f dB)", 10 * log10(err / ref2 + 1e-30));
+        snprintf(m, sizeof m, "BLEND SRC DI INV: the clean signal upside down (difference %.1f dB)", 10 * log10(err / ref2 + 1e-30));
         CHECK(err / ref2 < 1e-6, m);
         char t[16];
-        px_param_text(PX_B_CAB, PX_CAB_IR, 4, 0, t);  CHECK(!strcmp(t, "NORMAL"), "CLN PHASE at 0 reads NORMAL");
-        px_param_text(PX_B_CAB, PX_CAB_IR, 4, 100, t); CHECK(!strcmp(t, "INVERT"), "CLN PHASE at 100 reads INVERT");
+        px_param_text(PX_B_CAB, PX_CAB_IR, 4, 0, t);  CHECK(!strcmp(t, "DI"), "BLEND SRC at 0 reads DI (was CLN PHASE NORMAL)");
+        px_param_text(PX_B_CAB, PX_CAB_IR, 4, 100, t); CHECK(!strcmp(t, "DI INV"), "BLEND SRC at 100 reads DI INV (was INVERT)");
+        px_param_text(PX_B_CAB, PX_CAB_IR, 4, 33, t); CHECK(!strcmp(t, "AMP"), "BLEND SRC at 33 reads AMP");
+        px_param_text(PX_B_CAB, PX_CAB_IR, 4, 60, t); CHECK(!strcmp(t, "AMP INV"), "BLEND SRC at 60 reads AMP INV");
+        /* AMP: BLEND 100 is the amp alone, the IR left out (only the cabinet is dosed) */
+        {
+            px_preset_t pa; bass_preset(&pa, 100, 33, 1);
+            run_plain(&pa, sig, a, FR * NB);
+            px_preset_t qa = pa; qa.on[PX_B_CAB] = 0;
+            run_plain(&qa, sig, b, FR * NB);
+            double e2 = 0, r2 = 0;
+            for (int i = 4096; i < FR * NB; i++) { e2 += (a[i] - b[i]) * (a[i] - b[i]); r2 += (double)b[i] * b[i]; }
+            snprintf(m, sizeof m, "BLEND SRC AMP, BLEND 100: the amp without the IR (difference %.1f dB)", 10 * log10(e2 / r2 + 1e-30));
+            CHECK(e2 / r2 < 1e-6, m);
+            static float nb2[2][FR], cl2[2][FR];          /* and through the pipeline, at BLEND 50 */
+            bass_preset(&pa, 50, 33, 1);
+            run_plain(&pa, sig, ref, FR * NB);
+            px_engine_init(&e, 44100.0f); px_engine_set(&e, &pa);
+            int cur = 0; memset(got, 0, sizeof got);
+            for (int bb = 0; bb < NB; bb++) {
+                if (bb) for (int o = 0; o < FR; o += 64) { px_cln_r = cl2[cur ^ 1] + o; px_engine_part(&e, nb2[cur ^ 1] + o, got + FR * (bb - 1) + o, 64, PX_PART_POST); }
+                for (int o = 0; o < FR; o += 64) { px_cln_w = cl2[cur] + o; px_engine_part(&e, sig + FR * bb + o, nb2[cur] + o, 64, PX_PART_PRE); }
+                for (int o = 0; o < FR; o += 64) px_engine_part(&e, nb2[cur] + o, nb2[cur] + o, 64, PX_PART_NAM);
+                cur ^= 1;
+            }
+            CHECK(!memcmp(ref, got, sizeof(float) * FR * (NB - 1)), "BLEND SRC AMP: the pipeline = the plain engine, one block later");
+        }
     }
 
     printf("3. BLEND 50 on a 41 Hz low E with every factory NAM model: the lows with the better CLN PHASE\n");
