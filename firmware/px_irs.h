@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * OpenPocket — the user cabinet IRs in flash (v38).
  *
- * 8 slots of 4 KiB at 0xF4000..0xFC000 (above the preset store; the update loader leaves this range alone:
+ * (OpenPocket Bass: 20 slots, ir_addr below; first) 8 slots of 4 KiB at 0xF4000..0xFC000 (above the preset store; the update loader leaves this range alone:
  * loader/ldr_core.c LDR_IR_LO/HI). A slot: a 64-byte header, then PX_IR_LEN (1024) 16-bit samples at 44.1 kHz:
  *   magic "OPIR", version 1, 1024, name (11 chars + 0), scale (float: the samples' full scale), CRC16 of the samples.
  * The web editor (docs/pxir.js) reads the user's WAV file, resamples it to 44.1 kHz, keeps its first 1024 samples (a
@@ -14,6 +14,16 @@
 
 #define IR_BASE   0xF4000u
 #define IR_SLOT   0x1000u
+/* OpenPocket Bass: 20 slots. 0..7 as before at 0xF4000..0xFC000 (kept through the update); 8..18 at 0xE5000..0xF0000
+ * (above the update loader's staging, below the preset store: unused by OpenPocket); 19 at 0xFC000. Each range is
+ * user data for the update loader (loader/ldr_core.c LDR_IR2, LDR_IR3) and writable by the app (px_usb.h). A record
+ * is 2112 bytes from the sector's start: bytes 0xF00..0xF07 of each sector stay erased (no update record). */
+#define IR2_BASE  0xE5000u
+#define IR3_BASE  0xFC000u
+static uint32_t ir_addr(uint32_t s)
+{
+    return s < 8u ? IR_BASE + s * IR_SLOT : s < 19u ? IR2_BASE + (s - 8u) * IR_SLOT : IR3_BASE + (s - 19u) * IR_SLOT;
+}
 #define IR_MAGIC  0x5249504Fu                    /* "OPIR" */
 #define IR_HDR    64u
 #define IR_BYTES  (IR_HDR + PX_IR_LEN * 2u)      /* 2112 */
@@ -43,7 +53,7 @@ static void ir_scan(void)
     ir_hdr_t h;
     for (uint32_t s = 0; s < PX_IR_N; s++) {
         ir_cache[s].ok = 0;
-        if (ota_fread(IR_BASE + s * IR_SLOT, &h, sizeof h) || !ir_hdr_ok(&h)) continue;
+        if (ota_fread(ir_addr(s), &h, sizeof h) || !ir_hdr_ok(&h)) continue;
         ir_cache[s].ok = 1;
         nm_name_clean(ir_cache[s].name, h.name);
     }
@@ -56,7 +66,7 @@ int px_ir_user(int slot, char *name12, float *h)
     memcpy(name12, ir_cache[slot].name, 12);
     if (h) {
         ir_hdr_t hd;
-        const uint32_t off = IR_BASE + (uint32_t)slot * IR_SLOT;
+        const uint32_t off = ir_addr((uint32_t)slot);
         int16_t *s = (int16_t *)h + PX_IR_LEN;         /* the samples into the upper half of h, then spread out */
         if (ota_fread(off, &hd, sizeof hd) || !ir_hdr_ok(&hd)) return 0;
         if (ota_fread(off + IR_HDR, s, PX_IR_LEN * 2u)) return 0;
@@ -81,7 +91,7 @@ static int ir_commit(uint32_t s)
     if (s >= PX_IR_N || !ir_hdr_ok(h)) return 1;
     if ((uint16_t)ota_crc16(ir_stage + IR_HDR, PX_IR_LEN * 2u, 0) != h->crc) return 1;
     nm_name_clean(h->name, h->name);
-    const uint32_t base = IR_BASE + s * IR_SLOT;
+    const uint32_t base = ir_addr(s);
     uint32_t k;
     int rc = 0;
     st_audio_hold(1);
@@ -106,7 +116,7 @@ static int ir_erase(uint32_t s)
     int rc = 0;
     if (s >= PX_IR_N) return 1;
     st_audio_hold(1);
-    if (fl_erase4k(IR_BASE + s * IR_SLOT, &k)) rc = 2;
+    if (fl_erase4k(ir_addr(s), &k)) rc = 2;
     st_audio_hold(0);
     ir_scan();
     return rc;

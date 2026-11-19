@@ -230,7 +230,7 @@ list = await ed.list();
   const f32 = prepareIr(parseWav(wav(44100, 32, 1, resp(44100, 10).map((f) => [f[0]]))));
   ok(f32.note === "" && f32.h[1000] === 0, "IR: a short float WAV at 44.1 kHz is kept as it is (zeros after its end)");
   let il = await ed.irList();
-  ok(il.length === 8 && il.every((x) => !x.used), "IR_LIST: 8 empty slots");
+  ok(il.length === 20 && il.every((x) => !x.used), "IR_LIST: 20 empty slots (OpenPocket Bass)");
   const name = irName("Mesa_4x12 V30.wav");
   const rc = await ed.irUpload(2, packIr(name, ir.h));
   il = await ed.irList();

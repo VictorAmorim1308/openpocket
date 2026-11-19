@@ -40,6 +40,10 @@
 #define LDR_NAM_HI 0xE0000u                     /* user data as well */
 #define LDR_IR_LO 0xF4000u                      /* v38: OpenPocket's cabinet IRs (firmware/px_irs.h): */
 #define LDR_IR_HI 0xFC000u                      /* user data as well */
+#define LDR_IR2_LO 0xE5000u                     /* OpenPocket Bass: IR slots 9..19 (firmware/px_irs.h ir_addr) */
+#define LDR_IR2_HI 0xF0000u
+#define LDR_IR3_LO 0xFC000u                     /* OpenPocket Bass: IR slot 20 */
+#define LDR_IR3_HI 0xFD000u
 #define LDR_NSEC ((LDR_APP_HI - LDR_APP_LO) >> 12)
 #define LDR_FL_MAX 0x100000u                    /* flash.bin: at most the 1 MiB part */
 
@@ -184,6 +188,8 @@ static int ldr_session(void)
             continue;                                    /* the NAM models (v37) */
         if (s - 0x1000u >= LDR_IR_LO && s - 0x1000u < LDR_IR_HI)
             continue;                                    /* the cabinet IRs (v38) */
+        if ((s - 0x1000u >= LDR_IR2_LO && s - 0x1000u < LDR_IR2_HI) || (s - 0x1000u >= LDR_IR3_LO && s - 0x1000u < LDR_IR3_HI))
+            continue;                                    /* OpenPocket Bass: the IR slots 9..20 */
         if (ldr_fread(s - 0x100u, r, 80))
             break;
         if (ota_rd16(r + 6) == 0x5441u && ota_rd16(r) && ota_rd16(r) == ota_crc16(r + 2, 78, 0))

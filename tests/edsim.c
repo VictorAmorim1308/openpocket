@@ -76,7 +76,8 @@ static uint32_t ota_crc16(const uint8_t *p, uint32_t n, uint32_t c)   /* as ota.
 
 /* ---- flash (only the preset store, v37 the NAM model slots and v38 the IR slots may be written, as FL_RANGE_OK on the pedal) ---- */
 #define ED_FL_OK(off, n) (FL_IN(off, n, 0xF0000u, 0xF4000u) || FL_IN(off, n, 0xC0000u, 0xE0000u) || \
-                          FL_IN(off, n, 0xF4000u, 0xFC000u))
+                          FL_IN(off, n, 0xF4000u, 0xFC000u) || FL_IN(off, n, 0xE5000u, 0xF0000u) || \
+                          FL_IN(off, n, 0xFC000u, 0xFD000u))
 static int writes_ok = 1;
 static int flash_dirty;
 static int ota_fread(uint32_t off, void *p, uint32_t n) { if (off + n > sizeof nor) return -1; memcpy(p, nor + off, n); return 0; }
