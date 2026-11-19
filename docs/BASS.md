@@ -42,3 +42,21 @@ Igual ao OpenPocket (`docs/BUILDING.md`). `make package` gera `docs/firmware/Bla
 - BASS OCTAVE: em notas dedilhadas de B0 a C3 (com o 2º harmônico mais forte que a fundamental), o SUB −1 fica de 32 a 47 dB acima de qualquer outra frequência. O UP +1 fica de 8 a 15 dB acima: uma oitava acima analógica nunca sai pura;
 - BASS PEQ: o MID corta e reforça a partir de 40 Hz;
 - afinador: B0, E1, A1, D2, G2 e C3 com erro de até 0,5 cent; harmônicos da 12ª casa com até 2,1 cents.
+
+## Antes de instalar: backup da BlackBox
+
+Instalar o OpenPocket apaga os amps, IRs e presets guardados na pedaleira. O firmware usa a mesma parte da memória flash (`docs/HARDWARE-HANDBOOK.md`, seção 3). Por isso, com o **firmware oficial** ainda instalado:
+
+1. abra `backup.html` (no Chrome ou no Edge, com a BlackBox no USB) e clique em **Conectar** e depois em **Fazer backup**;
+2. guarde o `.zip` que ele baixa.
+
+A página **só lê** a pedaleira: usa o mesmo comando de leitura (`0x23`) que o verificador dos sons de fábrica da V21 (`docs/pxfactory.js`) e nunca grava nada. O banco de amps e IRs é lido duas vezes, e as duas leituras têm que dar iguais. O zip traz:
+
+- `ampcab.bin`: os 20 amps e os 20 IRs byte a byte;
+- `presets.bin`: os 80 presets;
+- cada slot também num arquivo separado;
+- `info.json`, com os nomes de tudo e o SHA-256 de cada arquivo.
+
+Teste: `tests/test_backup.mjs`, contra uma BlackBox simulada.
+
+Pra voltar ao firmware oficial, use o passo 3 da página de instalação com o `.fwsc` da M-Vave. Os sons não voltam sozinhos: o firmware oficial só traz o programa. A restauração do teu banco a partir desse backup ainda vai ser escrita. Até lá, guarde também os arquivos originais das tuas capturas e IRs.

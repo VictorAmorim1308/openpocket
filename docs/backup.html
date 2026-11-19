@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backup da BlackBox — OpenPocket Bass</title>
+<style>
+:root{--bg:#121110;--panel:#1b1917;--ink:#ece7e0;--dim:#a39a8f;--line:#2e2a26;--acc:#ff7a29;--ok:#5fcf74;--err:#ff6b6b;--warn:#e7b04b;--bar:#2a2622;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;padding:24px 16px 48px}
+.wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1{margin:0;font-size:32px;line-height:1.1}h1 span{color:var(--acc)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px}
+.card h2{margin:0;font-size:13px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim)}
+button{font:600 15px/1 system-ui,sans-serif;padding:12px 18px;border-radius:10px;border:0;background:var(--acc);color:#1b1206;cursor:pointer}
+button:disabled{opacity:.45;cursor:default}
+.msg{margin:0;font-weight:600}.ok{color:var(--ok)}.err{color:var(--err)}.warn{color:var(--warn)}
+.bar{height:10px;background:var(--bar);border-radius:6px;overflow:hidden}.bar i{display:block;height:100%;width:0;background:var(--acc)}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:3px 6px;border-bottom:1px solid var(--line);text-align:left}
+th{color:var(--dim);font-weight:600}.dim{color:var(--dim)}
+pre{margin:0;font:12px/1.4 ui-monospace,monospace;color:var(--dim);white-space:pre-wrap;max-height:160px;overflow:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Backup da <span>BlackBox</span></h1>
+    <p class="dim">Salva no teu computador os 20 amps (capturas), os 20 IRs e os 80 presets da tua BlackBox,
+      <b>antes</b> de instalar o OpenPocket Bass. Esta página <b>só lê</b> a pedaleira: nada é gravado nela.</p>
+  </header>
+
+  <section class="card">
+    <h2>1 · Conectar</h2>
+    <p class="dim">Use o Chrome ou o Edge num computador. Ligue a BlackBox no USB com o <b>firmware oficial</b>, feche o app
+      da M-Vave (M-EFCS) se estiver aberto, e clique em Conectar. O navegador pede acesso ao MIDI: permita.</p>
+    <p class="msg err" id="nomidi" hidden>Este navegador não tem Web MIDI. Use o Chrome ou o Edge num computador.</p>
+    <div><button id="connect">Conectar</button></div>
+    <p class="msg" id="dev"></p>
+  </section>
+
+  <section class="card">
+    <h2>2 · Fazer o backup</h2>
+    <p class="dim">Leva uns minutos. O banco de amps e IRs é lido <b>duas vezes</b> e as duas leituras têm que dar iguais,
+      senão nada é salvo. Não desligue a pedaleira durante a leitura.</p>
+    <div><button id="go" disabled>Fazer backup</button></div>
+    <div class="bar"><i id="bar"></i></div>
+    <p class="msg" id="msg"></p>
+    <table id="tbl" hidden><thead><tr><th>Slot</th><th>Amp</th><th class="dim">tipo</th><th>IR</th><th class="dim">tipo</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>Registro</h2>
+    <pre id="log"></pre>
+  </section>
+</div>
+<script type="module">
+import { Updater, IS_OFFICIAL } from "./pxota.js";
+import { backup } from "./pxbackup.js";
+const $ = (id) => document.getElementById(id);
+const log = (s) => { $("log").textContent += s + "\n"; $("log").scrollTop = 1e9; };
+const msg = (s, c = "") => { $("msg").textContent = s; $("msg").className = "msg " + c; };
+let up = null, dev = null;
+if (!navigator.requestMIDIAccess) { $("nomidi").hidden = false; $("connect").disabled = true; }
+
+$("connect").onclick = async () => {
+  try {
+    if (!up) up = new Updater(await navigator.requestMIDIAccess({ sysex: true }), log);
+    $("dev").textContent = "procurando…"; $("dev").className = "msg";
+    const d = await up.identify();
+    if (!d) { $("dev").textContent = "Nenhuma pedaleira encontrada." + up.seen(); $("dev").className = "msg warn"; $("go").disabled = true; return; }
+    dev = d;
+    const official = d.id.model === "BlackBox" && IS_OFFICIAL(d.id);
+    $("dev").textContent = official ? `BlackBox com firmware oficial (${d.id.text}) em "${d.name}": pronto pro backup.`
+      : `Encontrei ${d.id.text}, mas esta página só faz backup de uma BlackBox com o firmware oficial.`;
+    $("dev").className = "msg " + (official ? "ok" : "warn");
+    $("go").disabled = !official;
+  } catch (e) { $("dev").textContent = "MIDI: " + e.message; $("dev").className = "msg err"; }
+};
+
+$("go").onclick = async () => {
+  $("go").disabled = $("connect").disabled = true; msg("lendo…", "warn"); $("bar").style.width = "0";
+  const d = await up.find((id) => id.model === "BlackBox" && IS_OFFICIAL(id));
+  if (!d) { msg("A pedaleira sumiu: conecte de novo.", "err"); $("connect").disabled = false; return; }
+  try {
+    const t0 = Date.now();
+    const { info, zip } = await backup(d.link, d.id.text, (p) => { $("bar").style.width = (p * 100).toFixed(1) + "%"; }, log);
+    const name = `blackbox-backup-${d.id.text}-${info.date.slice(0, 19).replace(/[:T]/g, "-")}.zip`;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([zip], { type: "application/zip" })); a.download = name; a.click();
+    const tb = $("tbl").querySelector("tbody"); tb.textContent = "";
+    for (let i = 0; i < 20; i++) {
+      const am = info.amps[i], cb = info.cabs[i], tr = document.createElement("tr");
+      for (const v of [i + 1, am.empty ? "(vazio)" : am.name, am.magic, cb.empty ? "(vazio)" : cb.name, cb.magic]) {
+        const td = document.createElement("td"); td.textContent = v; tr.append(td);
+      }
+      tb.append(tr);
+    }
+    $("tbl").hidden = false;
+    msg(`Backup salvo: ${name} (${((Date.now() - t0) / 1000).toFixed(0)} s). Guarde esse arquivo num lugar seguro antes de instalar.`, "ok");
+    log(`amps/IRs sha256 ${info.ampcab.sha256}\npresets sha256 ${info.presets.sha256}`);
+  } catch (e) { msg("Falhou: " + e.message + ". Nada foi alterado na pedaleira.", "err"); log("erro: " + e.message); }
+  finally { d.link.close(); $("go").disabled = false; $("connect").disabled = false; }
+};
+</script>
+</body>
+</html>
