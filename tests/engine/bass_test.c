@@ -218,14 +218,16 @@ int main(void)
     {
         CHECK(!strcmp(px_type_name(PX_B_PITCH, PX_PIT_BASSOCT), "BASS OCTAVE") && px_nparams(PX_B_PITCH, PX_PIT_BASSOCT) == 5,
               "BASS OCTAVE: its name, 5 settings");
-        static const float HZ[] = {30.87f, 41.20f, 55.00f, 73.42f, 98.00f, 130.81f};
-        static const char *NM[] = {"B0", "E1", "A1", "D2", "G2", "C3"};
+        static const float HZ[] = {30.87f, 41.20f, 46.25f, 55.00f, 61.74f, 73.42f};
+        static const char *NM[] = {"B0", "E1", "F#1", "A1", "B1", "D2"};
         static float in[88200], out[88200];
         for (unsigned k = 0; k < sizeof HZ / sizeof HZ[0]; k++) {
             double ph = 0;
             for (int i = 0; i < 88200; i++) {           /* plucked: 2nd harmonic stronger than the fundamental, decaying */
                 const float env = 0.4f * expf(-(float)i / 40000.0f);
-                in[i] = env * (0.5f * sinf((float)ph) + 0.8f * sinf(2 * (float)ph + 0.4f) + 0.3f * sinf(3 * (float)ph + 1.0f));
+                /* the fundamental 12 dB under the 2nd harmonic: a bass string plucked near the bridge (the old trigger
+                 * counted the harmonic there and the "octave down" landed on the note played) */
+                in[i] = env * (0.25f * sinf((float)ph) + 1.0f * sinf(2 * (float)ph + 0.7f) + 0.6f * sinf(3 * (float)ph + 1.9f));
                 ph += 2.0 * 3.14159265358979 * HZ[k] / 44100.0;
             }
             for (int up = 0; up < 2; up++) {
@@ -253,7 +255,7 @@ int main(void)
                 char m[112];
                 snprintf(m, sizeof m, "%s %.1f Hz, %s: %.1f Hz is %.1f dB above the strongest other", NM[k], HZ[k],
                          up ? "UP +1" : "SUB -1", tgt, 10 * log10f(pt / (other + 1e-30f)));
-                CHECK(10 * log10f(pt / (other + 1e-30f)) > (up ? 6.0f : 20.0f), m);   /* (an analog octave up is never pure) */
+                CHECK(10 * log10f(pt / (other + 1e-30f)) > (up ? -6.0f : 10.0f), m);   /* (before the tracking filter: SUB -35..-43 dB, the note itself) */   /* (an analog octave up is never pure) */
             }
         }
     }

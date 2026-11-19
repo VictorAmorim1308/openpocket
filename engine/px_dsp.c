@@ -76,7 +76,8 @@ static struct {
     float oct_ea, oct_er;
     px_bq oct_ua, oct_ub;
     int oct_n;
-} pxb;
+    float oct_trk, oct_pk, oct_nk, oct_pkd, oct_amp, oct_ak, oct_fc;   /* BASS OCTAVE: TRACK (the tracking filter's top), the */
+} pxb;                                                       /* peaks held for the trigger, the sub's level */
 float *px_cln_w;
 const float *px_cln_r;
 static inline float f01(uint8_t v) { return (float)(v > 100 ? 100 : v) * 0.01f; }
@@ -1037,14 +1038,20 @@ static void rc_pitch(px_engine *e)
         bq_highpass(&e->oct_uphp, sr, 60.0f, 0.7f);
         e->oct_dry = f01(q[0]); e->oct_s1 = f01(q[1]) * 2.5f; e->oct_s2 = f01(q[2]) * 2.5f; e->oct_up = f01(q[3]) * 2.0f;
         break;
-    case PX_PIT_BASSOCT:                               /* OpenPocket Bass: a flip-flop divider with a Schmitt trigger */
+    case PX_PIT_BASSOCT:                               /* OpenPocket Bass: a flip-flop divider. The tracking filter (two */
+        /* low-passes, oct_ua/ub) follows the note found, at 1.25 x its pitch, from 60 Hz up to TRACK: the fundamental stays
+         * the strongest partial even when the string's 2nd harmonic is louder (the low E and B), so the divider never
+         * counts the harmonic. The trigger fires at 40 % of the held peak (no chatter as the note decays). */
         bq_lowpass(&e->oct_lp, sr, boct_track_hz(q[4]), 0.6f);
-        bq_lowpass(&e->oct_lp2, sr, boct_track_hz(q[4]), 0.6f);
+        pxb.oct_trk = boct_track_hz(q[4]);
+        bq_lowpass(&pxb.oct_ua, sr, 30.0f, 0.6f);
+        pxb.oct_fc = 30.0f;
+        bq_lowpass(&pxb.oct_ub, sr, 30.0f, 0.6f);
+        pxb.oct_pkd = expf(-1.0f / (0.05f * sr));
+        pxb.oct_ak = 1.0f - expf(-1.0f / (0.012f * sr));
         bq_lowpass(&e->oct_sublp, sr, 60.0f + f01(q[3]) * 540.0f, 0.7f);   /* the square's edges: 60..600 Hz */
         bq_lowpass(&e->oct_sublp2, sr, 60.0f + f01(q[3]) * 540.0f, 0.5f);
         bq_lowpass(&e->oct_bp, sr, 1200.0f, 0.7f);    /* the octave up: the note's fundamental rectified */
-        bq_lowpass(&pxb.oct_ua, sr, boct_track_hz(q[4]), 0.6f);
-        bq_lowpass(&pxb.oct_ub, sr, boct_track_hz(q[4]), 0.6f);
         bq_highpass(&e->oct_uphp, sr, 50.0f, 0.7f);
         pxb.oct_ea = expf(-1.0f / (0.002f * sr)); pxb.oct_er = expf(-1.0f / (0.06f * sr));
         e->oct_dry = f01(q[0]); e->oct_s1 = f01(q[1]) * 1.6f; e->oct_s2 = 0.0f; e->oct_up = f01(q[2]) * 2.5f;
@@ -3757,23 +3764,28 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     u = bq_run(&e->oct_uphp, u);
                     x = x * e->oct_dry + s1 * e->oct_s1 + s2 * e->oct_s2 + u * e->oct_up;
                 } else if (pit_t == PX_PIT_BASSOCT) {   /* OpenPocket Bass */
-                    const float b = bq_run(&e->oct_lp2, bq_run(&e->oct_lp, x));
+                    const float b = bq_run(&pxb.oct_ub, bq_run(&pxb.oct_ua, bq_run(&e->oct_lp, x)));
                     const float a = px_abs(b);
+                    pxb.oct_pk = b > pxb.oct_pk ? b : pxb.oct_pk * pxb.oct_pkd;
+                    pxb.oct_nk = -b > pxb.oct_nk ? -b : pxb.oct_nk * pxb.oct_pkd;
                     e->oct_env = a + (e->oct_env - a) * (a > e->oct_env ? pxb.oct_ea : pxb.oct_er);
-                    const float h = e->oct_env * 0.25f;   /* Schmitt trigger: a crossing counts only past +-h */
+                    pxb.oct_amp += (e->oct_env - pxb.oct_amp) * pxb.oct_ak;
                     if (pxb.oct_n < 1 << 20) pxb.oct_n++;
-                    if (e->oct_prev <= 0.0f && b > h && e->oct_env > 0.001f) {
+                    if (e->oct_prev <= 0.0f && b > 0.4f * pxb.oct_pk && pxb.oct_pk > 0.00005f) {
                         e->oct_prev = 1.0f; e->oct_ff = -e->oct_ff;
-                        const int T = pxb.oct_n;          /* a period: the octave up's filter follows the note */
+                        const int T = pxb.oct_n;         /* a period: the tracking filter follows the note */
                         pxb.oct_n = 0;
                         if (T > (int)(sr / 600.0f) && T < (int)(sr / 25.0f)) {
-                            const float fc = 1.25f * sr / (float)T;
+                            float fc = 0.8f * sr / (float)T;   /* down at once, up by at most 25 % a period: */
+                            if (fc > pxb.oct_fc * 1.25f) fc = pxb.oct_fc * 1.25f;   /* one harmonic counted by */
+                            if (fc < 30.0f) fc = 30.0f;        /* mistake cannot pull the filter up to it */
+                            if (fc > pxb.oct_trk) fc = pxb.oct_trk;
+                            pxb.oct_fc = fc;
                             bq_lowpass(&pxb.oct_ua, sr, fc, 0.6f); bq_lowpass(&pxb.oct_ub, sr, fc, 0.6f);
                         }
-                    } else if (e->oct_prev > 0.0f && b < -h) e->oct_prev = -1.0f;
-                    const float s1 = bq_run(&e->oct_sublp2, bq_run(&e->oct_sublp, e->oct_ff * e->oct_env));
-                    const float f1 = bq_run(&pxb.oct_ub, bq_run(&pxb.oct_ua, x));
-                    const float u = bq_run(&e->oct_bp, bq_run(&e->oct_uphp, px_abs(f1)));
+                    } else if (e->oct_prev > 0.0f && b < -0.4f * pxb.oct_nk) e->oct_prev = -1.0f;
+                    const float s1 = bq_run(&e->oct_sublp2, bq_run(&e->oct_sublp, e->oct_ff * pxb.oct_amp));
+                    const float u = bq_run(&e->oct_bp, bq_run(&e->oct_uphp, a));
                     x = x * e->oct_dry + s1 * e->oct_s1 + u * e->oct_up;
                 } else {
 #if !PX_RUNS                                           /* (with the runs: pitch_run) */
