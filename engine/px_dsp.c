@@ -66,6 +66,19 @@ static inline float sin_hq(float ph)                   /* refined parabola (0.1 
     return 0.225f * (y * px_abs(y) - y) + y;
 }
 static inline float lfo_tri(float ph) { return 4.0f * px_abs(ph - 0.5f) - 1.0f; }
+/* OpenPocket Bass: the bass blocks' state, outside px_engine (its RAM region is full; one engine on the pedal, as the
+ * IR's convolution): USER IR's BLEND (ir_bl, ramped from ir_bz) and CLN PHASE (ir_cg: +1 / -1); BASS CHORUS's X-OVER
+ * on the wet and the dry; BASS OCTAVE's envelope (attack, release) and the octave up's filter, set at 1.25 x the note
+ * found (oct_n: samples since the last) */
+static struct {
+    float ir_bl, ir_bz, ir_cg;
+    px_bq mod_hpw, mod_hpd;
+    float oct_ea, oct_er;
+    px_bq oct_ua, oct_ub;
+    int oct_n;
+} pxb;
+float *px_cln_w;
+const float *px_cln_r;
 static inline float f01(uint8_t v) { return (float)(v > 100 ? 100 : v) * 0.01f; }
 static inline float db2lin(float db) { return powf(10.0f, db / 20.0f); }
 static inline float wrap1(float ph) { if (ph >= 1.0f) ph -= 1.0f; else if (ph < 0.0f) ph += 1.0f; return ph; }
@@ -1030,10 +1043,10 @@ static void rc_pitch(px_engine *e)
         bq_lowpass(&e->oct_sublp, sr, 60.0f + f01(q[3]) * 540.0f, 0.7f);   /* the square's edges: 60..600 Hz */
         bq_lowpass(&e->oct_sublp2, sr, 60.0f + f01(q[3]) * 540.0f, 0.5f);
         bq_lowpass(&e->oct_bp, sr, 1200.0f, 0.7f);    /* the octave up: the note's fundamental rectified */
-        bq_lowpass(&e->oct_ua, sr, boct_track_hz(q[4]), 0.6f);
-        bq_lowpass(&e->oct_ub, sr, boct_track_hz(q[4]), 0.6f);
+        bq_lowpass(&pxb.oct_ua, sr, boct_track_hz(q[4]), 0.6f);
+        bq_lowpass(&pxb.oct_ub, sr, boct_track_hz(q[4]), 0.6f);
         bq_highpass(&e->oct_uphp, sr, 50.0f, 0.7f);
-        e->oct_ea = expf(-1.0f / (0.002f * sr)); e->oct_er = expf(-1.0f / (0.06f * sr));
+        pxb.oct_ea = expf(-1.0f / (0.002f * sr)); pxb.oct_er = expf(-1.0f / (0.06f * sr));
         e->oct_dry = f01(q[0]); e->oct_s1 = f01(q[1]) * 1.6f; e->oct_s2 = 0.0f; e->oct_up = f01(q[2]) * 2.5f;
         break;
     case PX_PIT_POLYOCT:                               /* two delay-line shifters: -12 and +12 */
@@ -1709,8 +1722,8 @@ static void rc_cab_ir(px_engine *e)
     bq_highpass(&e->ir_lo, sr, ir_lo_hz(q[1]), 0.7071f);
     const float hi = ir_hi_hz(q[2]);
     if (hi >= sr * 0.45f) bq_ident(&e->ir_hi); else bq_lowpass(&e->ir_hi, sr, hi, 0.7071f);
-    e->ir_bl = f01(q[3]);                              /* OpenPocket Bass: BLEND, and the clean signal's polarity: an */
-    e->ir_cg = q[4] < 50 ? 1.0f : -1.0f;               /* amp whose output is upside down would cancel the lows */
+    pxb.ir_bl = f01(q[3]);                              /* OpenPocket Bass: BLEND, and the clean signal's polarity: an */
+    pxb.ir_cg = q[4] < 50 ? 1.0f : -1.0f;               /* amp whose output is upside down would cancel the lows */
 }
 
 /* px_engine_prepare's store: the last set made, and what it was made for */
@@ -1797,8 +1810,8 @@ static void rc_mod(px_engine *e)
         e->mod_base = 0.006f * sr; e->mod_sweep = (0.0005f + 0.0055f * f01(q[1])) * sr;
         e->mod_mix = f01(q[2]);
         bq_lowpass(&e->mod_lp, sr, 6600.0f, 0.7f);
-        bq_highpass(&e->mod_hpw, sr, bch_xo_hz(q[3]), 0.7071f);
-        bq_highpass(&e->mod_hpd, sr, bch_xo_hz(q[3]), 0.7071f);
+        bq_highpass(&pxb.mod_hpw, sr, bch_xo_hz(q[3]), 0.7071f);
+        bq_highpass(&pxb.mod_hpd, sr, bch_xo_hz(q[3]), 0.7071f);
         break;
     case PX_MOD_DIMENSION: {
         static const float RATE[4] = {0.25f, 0.25f, 0.5f, 0.5f}, DEP[4] = {0.0005f, 0.0009f, 0.0007f, 0.0012f};
@@ -2176,6 +2189,7 @@ static void px_recalc(px_engine *e)
 void px_engine_init(px_engine *e, float sr)
 {
     memset(e, 0, sizeof(*e));
+    memset(&pxb, 0, sizeof pxb);
     e->sr = sr;
     e->oct_ff = 1.0f; e->oct_ff2 = 1.0f;
     e->dly_type = -1;
@@ -3521,8 +3535,8 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
     }
     int s_lo = 0, s_hi = nam ? ip_amp : ns;
     /* OpenPocket Bass: the clean signal at the amp's input (or the drive's, when they are one section), for USER IR's
-     * BLEND: taken here (cl_have), or with the pipeline left by PX_PART_PRE in e->cln_w and found by PX_PART_POST in
-     * e->cln_r. Without an amp before the cabinet the BLEND mixes the cabinet's own input. */
+     * BLEND: taken here (cl_have), or with the pipeline left by PX_PART_PRE in px_cln_w and found by PX_PART_POST in
+     * px_cln_r. Without an amp before the cabinet the BLEND mixes the cabinet's own input. */
     float clb[PX_MAX_BLOCK];
     int cl_have = 0;
     const int cl_at = pair ? ip_drv : ip_amp;
@@ -3567,21 +3581,21 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
         if (!nam && s == cl_at) { for (int k = 0; k < n; k++) clb[k] = xb[k]; cl_have = 1; }   /* (Bass: BLEND's source) */
         if (sblk == PX_B_CAB) {                          /* cabinet: its filters one after the other over the block */
             if (p->on[PX_B_CAB] && p->type[PX_B_CAB] % PX_CAB_COUNT == PX_CAB_IR) {   /* v38: an impulse response */
-                const float bl0 = e->ir_bz, bl1 = e->ir_bl;
+                const float bl0 = pxb.ir_bz, bl1 = pxb.ir_bl;
                 const float *cs = 0;                     /* OpenPocket Bass: BLEND's clean signal */
                 if (bl0 > 0.0f || bl1 > 0.0f) {
-                    if (part == PX_PART_POST) cs = e->cln_r;
+                    if (part == PX_PART_POST) cs = px_cln_r;
                     else if (cl_have) cs = clb;
                     else { for (int k = 0; k < n; k++) clb[k] = xb[k]; cs = clb; }   /* (no amp before: the IR's input) */
                 }
                 if (ir_ok && n == IR_B) ir_run(xb);      /* (blocks of 64 as on the pedal; other sizes pass) */
                 bq_block2(&e->ir_lo, &e->ir_hi, xb, n);
                 if (cs) {                                /* wet (1 - b) + clean * CLEAN LV * b, b ramped over the block */
-                    const float db = (bl1 - bl0) / (float)n, cg = e->ir_cg;
+                    const float db = (bl1 - bl0) / (float)n, cg = pxb.ir_cg;
                     float b = bl0;
                     for (int k = 0; k < n; k++) { b += db; xb[k] += (cs[k] * cg - xb[k]) * b; }
                 }
-                e->ir_bz = bl1;
+                pxb.ir_bz = bl1;
                 for (int k = 0; k < n; k++) xb[k] *= strim;
             } else if (p->on[PX_B_CAB] && e->cab_n) {
                 if (px_fx_int) fq_chain(e->cab, (px_fq *)e->fq_cab, e->cab_n, xb, n);
@@ -3745,20 +3759,20 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                 } else if (pit_t == PX_PIT_BASSOCT) {   /* OpenPocket Bass */
                     const float b = bq_run(&e->oct_lp2, bq_run(&e->oct_lp, x));
                     const float a = px_abs(b);
-                    e->oct_env = a + (e->oct_env - a) * (a > e->oct_env ? e->oct_ea : e->oct_er);
+                    e->oct_env = a + (e->oct_env - a) * (a > e->oct_env ? pxb.oct_ea : pxb.oct_er);
                     const float h = e->oct_env * 0.25f;   /* Schmitt trigger: a crossing counts only past +-h */
-                    if (e->oct_n < 1 << 20) e->oct_n++;
+                    if (pxb.oct_n < 1 << 20) pxb.oct_n++;
                     if (e->oct_prev <= 0.0f && b > h && e->oct_env > 0.001f) {
                         e->oct_prev = 1.0f; e->oct_ff = -e->oct_ff;
-                        const int T = e->oct_n;          /* a period: the octave up's filter follows the note */
-                        e->oct_n = 0;
+                        const int T = pxb.oct_n;          /* a period: the octave up's filter follows the note */
+                        pxb.oct_n = 0;
                         if (T > (int)(sr / 600.0f) && T < (int)(sr / 25.0f)) {
                             const float fc = 1.25f * sr / (float)T;
-                            bq_lowpass(&e->oct_ua, sr, fc, 0.6f); bq_lowpass(&e->oct_ub, sr, fc, 0.6f);
+                            bq_lowpass(&pxb.oct_ua, sr, fc, 0.6f); bq_lowpass(&pxb.oct_ub, sr, fc, 0.6f);
                         }
                     } else if (e->oct_prev > 0.0f && b < -h) e->oct_prev = -1.0f;
                     const float s1 = bq_run(&e->oct_sublp2, bq_run(&e->oct_sublp, e->oct_ff * e->oct_env));
-                    const float f1 = bq_run(&e->oct_ub, bq_run(&e->oct_ua, x));
+                    const float f1 = bq_run(&pxb.oct_ub, bq_run(&pxb.oct_ua, x));
                     const float u = bq_run(&e->oct_bp, bq_run(&e->oct_uphp, px_abs(f1)));
                     x = x * e->oct_dry + s1 * e->oct_s1 + u * e->oct_up;
                 } else {
@@ -3894,8 +3908,8 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     float tri = lfo_tri(e->mod_ph);
                     e->mod_buf[e->mod_w] = x;
                     float wet = mod_tap(e, e->mod_base + e->mod_sweep * (0.5f + 0.5f * tri));
-                    wet = bq_run(&e->mod_hpw, bq_run(&e->mod_lp, wet));
-                    const float xh = bq_run(&e->mod_hpd, x);
+                    wet = bq_run(&pxb.mod_hpw, bq_run(&e->mod_lp, wet));
+                    const float xh = bq_run(&pxb.mod_hpd, x);
                     if (++e->mod_w >= 2048) e->mod_w = 0;
                     x = x + 0.5f * e->mod_mix * (wet - xh);
                 } break;
@@ -3976,7 +3990,7 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
     if (nam && pass == 0) {
         float *d = part == PX_PART_PRE ? out : e->nam_buf;
         for (int k = 0; k < n; k++) d[k] = xb[k];
-        if (part == PX_PART_PRE) { if (e->cln_w) for (int k = 0; k < n; k++) e->cln_w[k] = xb[k]; }   /* (Bass: BLEND) */
+        if (part == PX_PART_PRE) { if (px_cln_w) for (int k = 0; k < n; k++) px_cln_w[k] = xb[k]; }   /* (Bass: BLEND) */
         else { for (int k = 0; k < n; k++) clb[k] = xb[k]; cl_have = 1; }
         continue;
     }

@@ -87,11 +87,11 @@ int main(void)
             memset(got, 0, sizeof got);
             for (int b = 0; b < NB; b++) {
                 if (b) for (int o = 0; o < FR; o += 64) {
-                    e.cln_r = cl[cur ^ 1] + o;
+                    px_cln_r = cl[cur ^ 1] + o;
                     px_engine_part(&e, nb[cur ^ 1] + o, got + FR * (b - 1) + o, 64, PX_PART_POST);
                 }
                 for (int o = 0; o < FR; o += 64) {
-                    e.cln_w = cl[cur] + o;
+                    px_cln_w = cl[cur] + o;
                     px_engine_part(&e, sig + FR * b + o, nb[cur] + o, 64, PX_PART_PRE);
                 }
                 for (int o = 0; o < FR; o += 64) px_engine_part(&e, nb[cur] + o, nb[cur] + o, 64, PX_PART_NAM);
@@ -316,8 +316,8 @@ int main(void)
                 int cur = 0;
                 memset(got, 0, sizeof got);
                 for (int b = 0; b < 60; b++) {
-                    if (b) for (int o = 0; o < FR; o += 64) { e.cln_r = cl[cur ^ 1] + o; px_engine_part(&e, nb[cur ^ 1] + o, got + FR * (b - 1) + o, 64, PX_PART_POST); }
-                    for (int o = 0; o < FR; o += 64) { e.cln_w = cl[cur] + o; px_engine_part(&e, sig + FR * b + o, nb[cur] + o, 64, PX_PART_PRE); }
+                    if (b) for (int o = 0; o < FR; o += 64) { px_cln_r = cl[cur ^ 1] + o; px_engine_part(&e, nb[cur ^ 1] + o, got + FR * (b - 1) + o, 64, PX_PART_POST); }
+                    for (int o = 0; o < FR; o += 64) { px_cln_w = cl[cur] + o; px_engine_part(&e, sig + FR * b + o, nb[cur] + o, 64, PX_PART_PRE); }
                     for (int o = 0; o < FR; o += 64) px_engine_part(&e, nb[cur] + o, nb[cur] + o, 64, PX_PART_NAM);
                     cur ^= 1;
                 }

@@ -257,7 +257,7 @@ static void post_run(uint32_t prev, int run, int nbv)   /* run: the engine on; n
     if (g_eng.wl_on) px_wet_run(&g_eng, 0u, 0);       /* v39.1: the lanes (the previous block's sends), first */
     if (run && nbv) {
         for (uint32_t o = 0; o < A_FR; o += PX_MAX_BLOCK) {
-            g_eng.cln_r = a_cln[prev] + o;
+            px_cln_r = a_cln[prev] + o;
             px_engine_part(&g_eng, a_nb[prev] + o, a_out + o, PX_MAX_BLOCK, PX_PART_POST);
         }
     } else if (!run) {
@@ -286,7 +286,7 @@ static void dsp_pipe_run(int run)                      /* run: the engine on (el
     const int job = fm1_cpu1_run(run ? pipe_job : post_job, prev);
     if (run && !job) pxn_srv_end();
     if (run) for (uint32_t o = 0; o < A_FR; o += PX_MAX_BLOCK)
-        { g_eng.cln_w = a_cln[a_nbi] + o; px_engine_part(&g_eng, a_in + o, a_nb[a_nbi] + o, PX_MAX_BLOCK, PX_PART_PRE); }
+        { px_cln_w = a_cln[a_nbi] + o; px_engine_part(&g_eng, a_in + o, a_nb[a_nbi] + o, PX_MAX_BLOCK, PX_PART_PRE); }
     const uint32_t tpre = fm1_ticks();
     if (!job) post_job(prev);                          /* (CPU1 off: here) */
     if (run) for (uint32_t o = 0; o < A_FR; o += PX_MAX_BLOCK)
@@ -427,7 +427,7 @@ static void dsp_lp_run(int run, uint32_t t_irq)
     uint32_t ta = 0;
     if (run) {
         for (uint32_t o = 0; o < A_FR; o += PX_MAX_BLOCK)
-            { g_eng.cln_w = a_cln[a_nbi] + o; px_engine_part(&g_eng, a_in + o, a_nb[a_nbi] + o, PX_MAX_BLOCK, PX_PART_PRE); }
+            { px_cln_w = a_cln[a_nbi] + o; px_engine_part(&g_eng, a_in + o, a_nb[a_nbi] + o, PX_MAX_BLOCK, PX_PART_PRE); }
         ta = fm1_ticks();
         if (!a_lpe1 && a_lpw) {
             /* the first two blocks after a change: CPU1's other work is not timed yet, and it has little (the pipeline

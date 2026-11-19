@@ -134,6 +134,13 @@ int         px_ir_slot(int v);                          /* the IR knob (0..100) 
 int         px_ir_knob(int slot);
 int         px_ir_name(int slot, char *buf12);          /* 1 = the slot holds an IR ("IR3 EMPTY" otherwise) */
 
+/* OpenPocket Bass: USER IR's BLEND with the two-core pipeline: where PX_PART_PRE leaves this block's clean signal (the
+ * amp's input) and where PX_PART_POST finds the clean signal of the block it plays (the caller's buffers, one block
+ * apart: firmware/px_audio.h a_cln; 0 = none). Outside px_engine: the engine's RAM region (POOL) is full; the bass
+ * blocks' other state is in px_dsp.c (pxb), one engine on the pedal, as the IR's */
+extern float *px_cln_w;
+extern const float *px_cln_r;
+
 /* ---------------------------------------------------------------- state --- */
 typedef struct { float b0, b1, b2, a1, a2, z1, z2; } px_bq;
 typedef struct { float b0, b1, a1, z; } px_op;      /* first-order section (RC) */
@@ -166,8 +173,6 @@ typedef struct {
     float ps_ph[2], ps_inc[2], ps_W[2], ps_lvl[2], ps_off[2][2], ps_dry, ps_r, ps_rt, ps_glide, ps_invW;
     px_bq oct_lp, oct_lp2, oct_sublp, oct_sublp2, oct_bp, oct_uphp;
     float oct_env, oct_ff, oct_ff2, oct_prev, oct_dry, oct_s1, oct_s2, oct_up;
-    float oct_ea, oct_er;                              /* BASS OCTAVE: its envelope (attack, release); the octave up's */
-    px_bq oct_ua, oct_ub; int oct_n;                   /* filter, set at 1.25 x the note found (oct_n: samples since) */
     /* special fx */
     float sfx_lo, sfx_bp, sfx_env, sfx_ph, sfx_ph2, sfx_inc, sfx_ff, sfx_prev, sfx_g;
     float sfx_a, sfx_b, sfx_c, sfx_d, sfx_mix, sfx_qd;
@@ -219,19 +224,12 @@ typedef struct {
     px_cabd cd; int cab_rw, cab_firon;
     int   ir_slot;                                     /* v38: the IR loaded (-1: none; its spectra: px_dsp.c) */
     px_bq ir_lo, ir_hi;                                /* its LOW CUT and HIGH CUT */
-    /* OpenPocket Bass: USER IR's BLEND (the clean signal taken at the amp's input, mixed with amp + IR) and CLN PHASE
-     * (ir_cg: +1 or -1).
-     * cln_w / cln_r: with the two-core pipeline, where PX_PART_PRE leaves this block's clean signal and where
-     * PX_PART_POST finds the clean signal of the block it plays (the caller's, one block apart; 0 = none) */
-    float ir_bl, ir_bz, ir_cg;
-    float *cln_w; const float *cln_r;
     /* eq */
     px_bq eq[5]; int eq_n;
     /* modulation */
     float mod_buf[2048]; int mod_w;
     float mod_ph, mod_inc, mod_depth, mod_mix, mod_fb, mod_base, mod_sweep, mod_shape;
     px_bq mod_lp;
-    px_bq mod_hpw, mod_hpd;                            /* BASS CHORUS: X-OVER on the wet and on the dry */
     float ph_z[4], ph_fb, ph_lo, ph_hi, uv_k[4], uv_lamp, uv_up, uv_dn, trem_g, trem_att, trem_rel;
     float rot_h, rot_d, rot_hs, rot_ds, rot_ht, rot_dt, rot_hk, rot_dk, rot_bal;
     /* delay */
