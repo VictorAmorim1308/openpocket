@@ -384,7 +384,9 @@ static void draw_bar(int k)            /* value + bar: the only thing that moves
         return;
     }
     if (!px_param_text((int)ui_blk, t, k, (int)v, b)) num3(b, v);   /* "+5TH", "440 MS"... */
-    else if (ui_blk == PX_B_CAB && t == PX_CAB_IR && k >= 1) ui_hz_text(b, k == 2 && v == 0u);
+    else if (ui_blk == PX_B_CAB && t == PX_CAB_IR && (k == 1 || k == 2)) ui_hz_text(b, k == 2 && v == 0u);
+    else if ((ui_blk == PX_B_EQ && t == PX_EQ_BASS && k == 1) || (ui_blk == PX_B_MOD && t == PX_MOD_BASSCHO && k == 3) ||
+             (ui_blk == PX_B_PITCH && t == PX_PIT_BASSOCT && k >= 3)) ui_hz_text(b, 0);   /* (OpenPocket Bass: in Hz) */
     ft_box(140, y + 1u, 90, b, &FT_MD, vc, bg, 2);
     uint32_t w = v * BAR_W / 100u;
     if (w) lcd_rect(BAR_X, y + 24u, w, 4, fc);
