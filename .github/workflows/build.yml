@@ -23,7 +23,7 @@ jobs:
             build/SHA256SUMS
       # OpenPocket Bass: the installer and the editor (docs/) with this build's packages, for GitHub Pages
       - uses: actions/upload-pages-artifact@v3
-        if: github.ref == 'refs/heads/bass'
+        if: github.ref == 'refs/heads/bass' || github.ref == 'refs/heads/main'
         with:
           path: docs
       - name: Build the MIDI test channel package (never the installer default)
@@ -40,7 +40,7 @@ jobs:
   pages:
     # OpenPocket Bass: publishes the installer with this build on https://<owner>.github.io/openpocket/
     # (Settings > Pages > Source: GitHub Actions, once)
-    if: github.ref == 'refs/heads/bass'
+    if: github.ref == 'refs/heads/bass' || github.ref == 'refs/heads/main'
     needs: build-and-test
     runs-on: ubuntu-24.04
     permissions:
