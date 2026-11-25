@@ -486,7 +486,7 @@ static void draw_band(int force)       /* the block's name on its colour, ON / O
 }
 static void draw_type(void)
 {
-    int sel = (UI_PAGE && ui_item == 0u), ed = sel && ui_mode == M_EDIT, many = px_ntypes((int)ui_blk) > 1;
+    int sel = (UI_PAGE && ui_item == 0u), ed = sel && ui_mode == M_EDIT, many = px_ntypes((int)ui_blk) > 1 && px_type_fixed((int)ui_blk) < 0;
     uint16_t bg = sel ? C_CARD : UI_BG, fg = ed ? UI_ACC : UI_TXT;
     ui_rbox(4, E_TYPE_Y - 2u, 232, 28, 5, bg, UI_BG);
     ft_box(8, E_TYPE_Y, 20, sel && many ? "<" : "", &FT_MD, UI_ACC, bg, 1);   /* (v42: no arrows on a block of one model) */
@@ -588,8 +588,13 @@ static void draw_edit(int force)
 }
 
 /* ---- render: sends only what changed to the screen ---- */
+static void ui_fix_types(void)          /* OpenPocket Bass: AMP is NAM, CAB is USER IR, in every preset shown */
+{
+    for (int b = 0; b < PX_NBLK; b++) if (px_type_fixed(b) >= 0) PRESET.type[b] = (uint8_t)px_type_fixed(b);
+}
 static void ui_render(void)
 {
+    ui_fix_types();
     if (ui_mode == M_TUNER || ui_mode == M_DIAG) return;   /* (the main loop draws them every 100 ms: tuner_draw, diag_draw) */
     if (ui_mode == M_SAVE) { save_draw(); return; }
     if (ui_mode == M_MIDI) { midi_draw(); return; }
@@ -679,7 +684,7 @@ static void ui_knob(int dd, int fast)
     } else if (ui_mode == M_EDIT) {
         if (ui_item == 0u) {
             int nt = px_ntypes((int)ui_blk);
-            PRESET.type[ui_blk] = (uint8_t)((PRESET.type[ui_blk] + nt + dd) % nt);
+            if (px_type_fixed((int)ui_blk) < 0) PRESET.type[ui_blk] = (uint8_t)((PRESET.type[ui_blk] + nt + dd) % nt);
         } else if (ui_item >= 2u) {
             int k = (int)ui_item - 2, t = PRESET.type[ui_blk], ln = ui_list_n((int)ui_blk, t, k);
             if (ln) {                                  /* one filled item a detent, at any speed; it stops at the ends */

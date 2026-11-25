@@ -194,7 +194,7 @@ function renderPage(fromPush) {
   }
   sel.value = p.type[b];
   sel.setAttribute("aria-label", `${B.name} type`);
-  const one = B.types.length < 2;
+  const one = B.types.length < 2 || B.fixed >= 0;   // (OpenPocket Bass: AMP is NAM, CAB is USER IR)
   sel.disabled = one; $("tprev").disabled = one; $("tnext").disabled = one;
 
   const box = $("params");

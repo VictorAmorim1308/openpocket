@@ -124,6 +124,7 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
         ed_b(a[0]); ed_str(px_block_label(a[0]), 15); ed_str(px_block_name(a[0]), 31); ed_b((uint32_t)px_ntypes(a[0]));
         { uint32_t c = BLK_COL[a[0]]; ed_b(c); ed_b(c >> 7); ed_b(c >> 14); }
         ed_b(px_block_used((int)a[0]) ? 1u : 0u);      /* OpenPocket Bass: 0 = taken out of the chain (an older editor stops before it) */
+        ed_b(px_type_fixed((int)a[0]) >= 0 ? (uint32_t)px_type_fixed((int)a[0]) : 127u);   /* its one type (127: chosen) */
         break;
     case ED_CAT_TYPE: {
         if (n < 2u || a[0] >= PX_NBLK || a[1] >= (uint32_t)px_ntypes(a[0])) return;
@@ -162,7 +163,7 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
             v = PRESET.on[b];
         } else if (a[1] == 2u) {
             uint32_t nt = (uint32_t)px_ntypes((int)b);
-            PRESET.type[b] = (uint8_t)(v < nt ? v : nt - 1u);
+            PRESET.type[b] = (uint8_t)(px_type_fixed((int)b) >= 0 ? (uint32_t)px_type_fixed((int)b) : v < nt ? v : nt - 1u);
             v = PRESET.type[b];
             ed_ui_fix();
         } else return;

@@ -77,3 +77,11 @@ O OpenPocket usa a parte da memória onde a M-Vave guarda os 20 amps, os 20 IRs 
 
 GATE, OITAVA, COMP, EQ, AMP (NAM) e CAB (IR, 2000 amostras: 45 ms). Delay, reverb, chorus, drives, wah e synth foram
 tirados. Os botões MOD, DLY e REV abrem o EQ, a oitava e o compressor.
+
+## AMP e CAB (OpenPocket Bass)
+
+- **AMP é sempre NAM** (não há outros amps pra escolher): MODEL (a captura), GAIN (o quanto a captura é empurrada: mais
+  saturação; metade da mudança de volume é compensada), BASS e TREBLE (atalhos de grave e agudo; o médio fica no bloco
+  EQ) e **LEVEL** (o volume do amp, ±12 dB).
+- **CAB é sempre USER IR**: IR, LOW CUT, HIGH CUT e **MIX**. O MIX dosa só o gabinete: 100 é tudo IR, 0 é a saída do amp
+  sem IR. Ele não mexe no resto da cadeia.

@@ -35,7 +35,8 @@ extern "C" {
 enum { PX_B_GATE, PX_B_COMP, PX_B_PITCH, PX_B_SFX, PX_B_DRIVE, PX_B_AMP, PX_B_CAB, PX_B_EQ, PX_B_MOD,
        PX_B_DELAY, PX_B_REVERB, PX_B_SYN, PX_NBLK };   /* SYN appended (v29): older presets keep their indices */
 #define PX_NPAR 5
-int px_block_used(int b);    /* OpenPocket Bass: 1 = the block is in the chain (GATE COMP PITCH EQ AMP CAB) */
+int px_block_used(int b);
+int px_type_fixed(int b);    /* OpenPocket Bass: the one type a block has (AMP: NAM, CAB: USER IR), -1: chosen */    /* OpenPocket Bass: 1 = the block is in the chain (GATE COMP PITCH EQ AMP CAB) */
 
 enum { PX_CMP_SQUASH, PX_CMP_STUDIO, PX_CMP_OPTO, PX_CMP_SWELL, PX_CMP_COUNT };
 enum { PX_PIT_OCTAVER, PX_PIT_POLYOCT, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE,

@@ -104,6 +104,66 @@ int main(void)
         }
     }
 
+#if PX_BASS
+    printf("2. OpenPocket Bass: CAB MIX (the cabinet alone), NAM LEVEL and GAIN, AMP and CAB of one type\n");
+    {
+        static float a[FR * NB], b[FR * NB];
+        char m[112];
+        px_preset_t pm; bass_preset(&pm, 0, 0, 1);       /* MIX 0: the IR's input alone, as the cabinet off */
+        run_plain(&pm, sig, a, FR * NB);
+        px_preset_t q = pm; q.on[PX_B_CAB] = 0;
+        run_plain(&q, sig, b, FR * NB);
+        double e2 = 0, r2 = 0;
+        for (int i = 4096; i < FR * NB; i++) { e2 += (a[i] - b[i]) * (a[i] - b[i]); r2 += (double)b[i] * b[i]; }
+        snprintf(m, sizeof m, "MIX 0: the amp without the IR (difference %.1f dB)", 10 * log10(e2 / r2 + 1e-30));
+        CHECK(e2 / r2 < 1e-6, m);
+        bass_preset(&pm, 100, 0, 1);                      /* MIX 100: whatever BLEND SRC said, all IR */
+        run_plain(&pm, sig, a, FR * NB);
+        bass_preset(&q, 100, 90, 1);
+        run_plain(&q, sig, b, FR * NB);
+        CHECK(!memcmp(a, b, sizeof a), "MIX 100: the old BLEND SRC (5th setting) changes nothing");
+        CHECK(px_nparams(PX_B_CAB, PX_CAB_IR) == 4 && !strcmp(px_param_name(PX_B_CAB, PX_CAB_IR, 3), "MIX"), "CAB: IR, LOW CUT, HIGH CUT, MIX");
+        static float nb2[2][FR], cl2[2][FR];              /* MIX 50 through the pipeline */
+        bass_preset(&pm, 50, 0, 1);
+        run_plain(&pm, sig, ref, FR * NB);
+        px_engine_init(&e, 44100.0f); px_engine_set(&e, &pm);
+        int cur = 0; memset(got, 0, sizeof got);
+        for (int bb = 0; bb < NB; bb++) {
+            if (bb) for (int o = 0; o < FR; o += 64) { px_cln_r = cl2[cur ^ 1] + o; px_engine_part(&e, nb2[cur ^ 1] + o, got + FR * (bb - 1) + o, 64, PX_PART_POST); }
+            for (int o = 0; o < FR; o += 64) { px_cln_w = cl2[cur] + o; px_engine_part(&e, sig + FR * bb + o, nb2[cur] + o, 64, PX_PART_PRE); }
+            for (int o = 0; o < FR; o += 64) px_engine_part(&e, nb2[cur] + o, nb2[cur] + o, 64, PX_PART_NAM);
+            cur ^= 1;
+        }
+        CHECK(!memcmp(ref, got, sizeof(float) * FR * (NB - 1)), "MIX 50: the pipeline = the plain engine, one block later");
+        /* NAM: LEVEL 0 is -12 dB, 25 -6 dB (above 50 this loud test signal meets the output's soft clipper) */
+        CHECK(!strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 1), "GAIN") && !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 3), "TREBLE") &&
+              !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 4), "LEVEL"), "NAM: MODEL, GAIN, BASS, TREBLE, LEVEL");
+        double lv[3];
+        for (int j = 0; j < 3; j++) {
+            bass_preset(&pm, 0, 0, 1); pm.on[PX_B_CAB] = 0; pm.p[PX_B_AMP][4] = (uint8_t)(j * 25);
+            run_plain(&pm, sig, a, FR * NB);
+            double en = 0; for (int i = 4096; i < FR * NB; i++) en += (double)a[i] * a[i];
+            lv[j] = 10 * log10(en + 1e-30);
+        }
+        snprintf(m, sizeof m, "NAM LEVEL 0 / 25: %.1f / %.1f dB against 50", lv[0] - lv[2], lv[1] - lv[2]);
+        CHECK(fabs(lv[0] - lv[2] + 12.0) < 0.3 && fabs(lv[1] - lv[2] + 6.0) < 0.3, m);
+        lv[1] = lv[2];
+        /* GAIN 100 drives the capture 12 dB harder; half of that is taken back at its output */
+        bass_preset(&pm, 0, 0, 1); pm.on[PX_B_CAB] = 0; pm.p[PX_B_AMP][1] = 100;
+        run_plain(&pm, sig, a, FR * NB);
+        double en = 0; for (int i = 4096; i < FR * NB; i++) en += (double)a[i] * a[i];
+        snprintf(m, sizeof m, "NAM GAIN 100: %+.1f dB against 50 (12 dB in, 6 dB taken back: at most +6)", 10 * log10(en + 1e-30) - lv[1]);
+        CHECK(10 * log10(en + 1e-30) - lv[1] < 6.5, m);
+        /* a preset that says another amp or cabinet still plays NAM and the USER IR */
+        bass_preset(&pm, 100, 0, 1);
+        run_plain(&pm, sig, a, FR * NB);
+        q = pm; q.type[PX_B_AMP] = 0; q.type[PX_B_CAB] = 0;
+        run_plain(&q, sig, b, FR * NB);
+        CHECK(px_type_fixed(PX_B_AMP) == PX_AMP_NAM && px_type_fixed(PX_B_CAB) == PX_CAB_IR && !memcmp(a, b, sizeof a),
+              "AMP is always NAM and CAB always USER IR, whatever the preset says");
+    }
+
+#else
     printf("2. BLEND 0 and 100\n");
     {
         px_preset_t p0, p100, pdi;
@@ -158,6 +218,7 @@ int main(void)
         }
     }
 
+#endif
     printf("3. BLEND 50 on a 41 Hz low E with every factory NAM model: the lows with the better CLN PHASE\n");
     {
         /* the amp and the clean signal at a 41 Hz low E (empty IR slot: passes): with CLN PHASE set the way that sounds
