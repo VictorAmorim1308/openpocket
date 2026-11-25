@@ -85,9 +85,10 @@ footer a,.note a{color:inherit}
     <p class="note"><span data-t="s2note"></span> <strong id="pkgver">…</strong></p>
     <p class="note warnbox" data-t="s2warn"></p>
     <p class="note warnbox" id="bbwarn" hidden data-t="bbwarn"></p>
-    <p class="note warnbox"><strong>BlackBox: faça o backup antes!</strong> Instalar o OpenPocket apaga os amps, IRs e presets
-      guardados na pedaleira. Com o firmware oficial ainda instalado, abra <a href="backup.html">a página de backup</a> e salve tudo
-      no computador primeiro. (OpenPocket Bass)</p>
+    <p class="note warnbox"><strong>BlackBox: seus sons ficam guardados.</strong> Instalar o OpenPocket ocupa a memória onde
+      a M-Vave guarda os amps, IRs e presets. Por isso, antes de instalar por cima do firmware oficial, esta página lê tudo
+      (duas vezes, conferindo), baixa o backup (.zip) pro seu computador e guarda uma cópia neste navegador. Se o backup
+      falhar, nada é instalado. Na volta pro firmware oficial V20 (passo 3), seus sons são regravados sozinhos. (OpenPocket Bass)</p>
     <p class="note warnbox" id="testchan" hidden data-t="testchan"></p>
     <div class="row">
       <button class="go" id="install" disabled data-t="install"></button>
@@ -106,6 +107,16 @@ footer a,.note a{color:inherit}
     <p class="msg" id="offmsg"></p>
     <label class="chk" id="offconfirm" hidden><input type="checkbox" id="offok"><span data-t="unknownok"></span></label>
     <div class="row"><button class="alt" id="backoff" disabled data-t="backoff"></button></div>
+    <div class="note" id="bankbox">
+      <strong>Seus sons da M-Vave (BlackBox V20)</strong>
+      <p id="bankinfo">Procurando o backup guardado neste navegador…</p>
+      <p>Na volta pro firmware oficial V20, os amps, IRs e presets do backup voltam sozinhos, um por um, conferidos.
+        Pra regravar a qualquer hora (com o firmware oficial V20 instalado), use o botão abaixo. Sem backup neste navegador,
+        escolha o .zip do backup.</p>
+      <input type="file" id="bankfile" accept=".zip">
+      <div class="row"><button class="alt" id="bankrestore" disabled>Regravar meus sons (amps, IRs e presets)</button></div>
+      <p class="msg" id="bankmsg"></p>
+    </div>
     <div class="note warnbox" id="v21-factory" hidden>
       <strong>BlackBox V21 factory sounds</strong>
       <p>The V21 firmware file contains no amps, cabinets, or presets. After it boots, verify the factory sounds here. If verification fails, start the Terminal tool in the <a href="RESCUE.md#blackbox-v21-factory-sounds">macOS recovery steps</a> before pressing the USB recovery button.</p>
@@ -140,6 +151,9 @@ footer a,.note a{color:inherit}
 import { Updater, IS_OTA, IS_OPENPOCKET, OUR_LOADER, MODELS } from "./pxota.js";
 import { productOf, logicalImage, checkOfficial } from "./pxpkg.js";
 import { BLACKBOX_V21, verifyFactorySounds } from "./pxfactory.js";
+import { IS_OFFICIAL } from "./pxota.js";
+import { backup } from "./pxbackup.js";
+import { restoreBank, bankFromZip, keepBank, keptBank, RESTORE_FIRMWARE } from "./pxrestore.js";
 
 const T = {
   en: {
@@ -284,7 +298,7 @@ async function run(job, resultMessage) {
   if (busy) return;
   busy = true; stepAt = resultMessage ? -1 : 0; drawSteps(); $("bar").style.width = "0";
   setState(t("busy"), "warn");
-  ["install", "backoff", "uboot", "connect", "verify-factory", "factory-uboot"].forEach((id) => $(id).disabled = true);
+  ["install", "backoff", "uboot", "connect", "verify-factory", "factory-uboot", "bankrestore"].forEach((id) => $(id).disabled = true);
   setMsg($("msg"), ""); $("next").hidden = true;
   try {
     const res = await job();
@@ -303,11 +317,13 @@ async function run(job, resultMessage) {
   } finally {
     busy = false;
     $("connect").disabled = false;
+    showBank();
     await scan();
   }
 }
 
 $("connect").onclick = connect;
+showBank();
 
 // rescue mode (issue #1): the packages are fetched beforehand, the install fires the moment a pedal answers
 let pre = null;
@@ -339,8 +355,29 @@ $("rescueOn").onchange = async () => {
   await prefetch();
   if (rescueArmed() && lastDev) rescueTry();
 };
+// OpenPocket Bass: before OpenPocket goes over the official BlackBox firmware, its sounds are read (twice, compared),
+// downloaded as a ZIP and kept in this browser; if that fails, nothing is installed
+async function bankBackup(d) {
+  const dev = await up.find((id) => id.model === "BlackBox" && IS_OFFICIAL(id));
+  if (!dev) throw Object.assign(new Error("a BlackBox com o firmware oficial não respondeu"), { code: "backup" });
+  let r;
+  try {
+    r = await backup(dev.link, dev.id.text, (p) => { $("bar").style.width = `${Math.round(p * 100)}%`; }, (m) => { setMsg($("msg"), m); log(m); });
+  } catch (e) {
+    throw Object.assign(new Error(`o backup dos seus sons falhou (${e.message}): nada foi instalado`), { code: "backup" });
+  } finally { dev.link.close(); }
+  const b = bankFromZip(r.zip);
+  await keepBank({ date: r.info.date, firmware: dev.id.text, ampcab: b.ampcab, presets: b.presets, zip: r.zip });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([r.zip], { type: "application/zip" }));
+  a.download = `blackbox-backup-${dev.id.text}-${r.info.date.slice(0, 19).replace(/[:T]/g, "-")}.zip`;
+  document.body.append(a); a.click(); a.remove();
+  log(`backup: ${r.info.amps.filter((x) => !x.empty).length} amps, ${r.info.cabs.filter((x) => !x.empty).length} IRs, 80 presets; downloaded and kept`);
+  showBank();
+}
 $("install").onclick = () => run(async () => {
   const d = lastDev;
+  if (d.id.model === "BlackBox" && IS_OFFICIAL(d.id)) await bankBackup(d);
   const { product, image } = await packageFor(d.id.model);
   log(`install ${product} over ${d.id.text}`);
   return up.install(image, product, (s, n) => { progress(s, n); if (s !== "verify" && s !== "write") log("step " + s + (n !== undefined ? " " + n : "")); });
@@ -360,8 +397,44 @@ $("resume").onclick = () => run(async () => {
 });
 $("backoff").onclick = () => run(async () => {
   log(`return to ${official.product}`);
-  return up.install(official.image, official.product, (s, n) => progress(s, n));
+  const r = await up.install(official.image, official.product, (s, n) => progress(s, n));
+  if (r === RESTORE_FIRMWARE && await keptBank()) await bankRestore(true);
+  return r;
 });
+// OpenPocket Bass: the backup's sounds into a BlackBox running the official V20 (docs/pxrestore.js)
+let bankPicked = null;
+async function showBank() {
+  const k = await keptBank();
+  $("bankinfo").textContent = k ? `Backup guardado neste navegador: ${k.firmware}, ${new Date(k.date).toLocaleString()}.`
+    : "Nenhum backup guardado neste navegador.";
+  $("bankrestore").disabled = busy || !(k || bankPicked);
+}
+$("bankfile").onchange = async (e) => {
+  bankPicked = null;
+  const f = e.target.files[0];
+  if (!f) return showBank();
+  try { bankPicked = bankFromZip(new Uint8Array(await f.arrayBuffer())); setMsg($("bankmsg"), `Backup escolhido: ${f.name}`, "ok"); }
+  catch (err) { setMsg($("bankmsg"), err.message, "err"); }
+  showBank();
+};
+async function bankRestore(after) {
+  const bank = bankPicked || await keptBank();
+  if (!bank) throw Object.assign(new Error("nenhum backup: escolha o .zip"), { code: "backup" });
+  const dev = await up.waitFor((id) => id.model === "BlackBox" && IS_OFFICIAL(id), after ? 20000 : 3000);
+  if (!dev) throw Object.assign(new Error("a BlackBox com o firmware oficial não respondeu"), { code: "backup" });
+  if (dev.id.text !== RESTORE_FIRMWARE) {
+    dev.link.close();
+    throw Object.assign(new Error(`a regravação só foi conferida na ${RESTORE_FIRMWARE}; a pedaleira está na ${dev.id.text}`), { code: "backup" });
+  }
+  try {
+    const res = await restoreBank(dev.link, bank, (p, m) => { $("bar").style.width = `${Math.round(p * 100)}%`; setMsg($("bankmsg"), m); }, log);
+    const m = res.same ? `Seus sons voltaram: ${res.amps} amps, ${res.cabs} IRs e ${res.presets} presets regravados, tudo igual ao backup.`
+      : `Atenção: ${res.failed.join(", ")} não ficaram iguais ao backup. Tente "Regravar meus sons" de novo.`;
+    setMsg($("bankmsg"), m, res.same ? "ok" : "err"); log(m);
+    if (!res.same) throw Object.assign(new Error(m), { code: "backup" });
+  } finally { dev.link.close(); }
+}
+$("bankrestore").onclick = () => run(async () => { await bankRestore(false); return RESTORE_FIRMWARE; }, "Regravação terminada (veja abaixo).");
 $("uboot").onclick = async () => { try { await up.uboot(); log("UBOOT soft key sent"); } catch (e) { log(e.message); } };
 $("factory-uboot").onclick = () => run(
   () => up.uboot((id) => id.text === BLACKBOX_V21),

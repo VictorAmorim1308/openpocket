@@ -61,6 +61,7 @@ $CC -O2 -Iengine -Ifirmware -Ibuild tests/engine/bass_test.c firmware/px_math.c 
 $CC -O2 -DPX_BASS=1 -Iengine -Ifirmware -Ibuild tests/engine/bass_test.c firmware/px_math.c -lm -o build/bass_test_b && build/bass_test_b | tail -1
 # OpenPocket Bass: the BlackBox backup page's reads (docs/pxbackup.js) against a simulated stock BlackBox
 node tests/test_backup.mjs | tail -1
+node tests/test_restore.mjs | tail -1
 $CC -O2 -Iengine tests/engine/wet_test.c engine/px_dsp.c firmware/px_math.c -lm -o build/wet_test && build/wet_test | tail -1
 echo "== NAM (fixed point against the float reference, every factory model)"
 $CC -O2 -DPXN_EMUVEC -Iengine tests/engine/nam_test.c engine/px_nam.c -o build/nam_test

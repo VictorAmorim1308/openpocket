@@ -60,3 +60,20 @@ A página **só lê** a pedaleira: usa o mesmo comando de leitura (`0x23`) que o
 Teste: `tests/test_backup.mjs`, contra uma BlackBox simulada.
 
 Pra voltar ao firmware oficial, use o passo 3 da página de instalação com o `.fwsc` da M-Vave. Os sons não voltam sozinhos: o firmware oficial só traz o programa. A restauração do teu banco a partir desse backup ainda vai ser escrita. Até lá, guarde também os arquivos originais das tuas capturas e IRs.
+
+## Seus sons da M-Vave ficam guardados (BlackBox)
+
+O OpenPocket usa a parte da memória onde a M-Vave guarda os 20 amps, os 20 IRs e os 80 presets. Por isso:
+
+- **Antes de instalar** por cima do firmware oficial, a página de instalação lê tudo duas vezes (as leituras têm que
+  bater), baixa o backup (.zip) e guarda uma cópia no navegador. Se o backup falhar, nada é instalado.
+- **Na volta pro firmware oficial V20** (passo 3), a página regrava sozinha os amps, IRs e presets do backup, só os
+  slots que mudaram, e confere cada um lendo de volta. O botão "Regravar meus sons" faz o mesmo a qualquer hora; sem
+  o backup no navegador, escolha o .zip.
+- A regravação usa a mesma sequência de comandos do editor oficial e só foi conferida na V20 (BlackBox_020). Em outra
+  versão a página não grava.
+
+## O que tem na cadeia (OpenPocket Bass)
+
+GATE, OITAVA, COMP, EQ, AMP (NAM) e CAB (IR, 2000 amostras: 45 ms). Delay, reverb, chorus, drives, wah e synth foram
+tirados. Os botões MOD, DLY e REV abrem o EQ, a oitava e o compressor.

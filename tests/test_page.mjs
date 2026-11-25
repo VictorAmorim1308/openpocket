@@ -132,6 +132,19 @@ await page.click("#factory-uboot");
 await page.waitForFunction(() => /USB recovery requested/.test(document.getElementById("msg").textContent));
 ok(simLog.includes("uboot") && !simLog.some((l) => /step[12]/.test(l)), "BlackBox V21: recovery asks for UBOOT without running an OTA");
 
+// OpenPocket Bass: over the official BlackBox firmware the sounds are backed up first; a pedal whose bank does not answer
+// (this simulator answers no bank reads) gets nothing installed
+sim.stdin.end(); sim = null; simLog.length = 0; buf = "";
+await page.reload();
+startSim("--stock", "BlackBox_020");
+await page.click("#connect");
+await page.waitForSelector("#install:enabled", { timeout: 15000 });
+await page.click("#install");
+await page.waitForSelector("#msg.err", { timeout: 60000 });
+ok(/nada foi instalado/.test(await page.textContent("#msg")) && !simLog.some((l) => /step[12]/.test(l)),
+   "BlackBox V20: no backup of its sounds, no install (nothing sent to update)");
+ok(/Nenhum backup guardado/.test(await page.textContent("#bankinfo")), "BlackBox V20: the page says no backup is kept here");
+
 // a test channel: only through ?channel=NAME, from its own folder, with its banner; the normal page has none
 cpSync(join(FIX, "firmware"), join(SITE, "firmware", "midi-test"), { recursive: true });
 {
