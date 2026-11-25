@@ -82,6 +82,8 @@ build/test_usb_audio > build/usb_audio.log || { cat build/usb_audio.log; exit 1;
 tail -1 build/usb_audio.log
 echo "== screen (every page fully drawn)"
 mkdir -p build/ui && $CC -O1 -Wall -Wno-unused-function -Iengine -Ifirmware -o build/uisim tests/uisim.c engine/px_dsp.c firmware/px_math.c -lm
+# OpenPocket Bass: the bass PLAY screen (the pedalboard) builds; its pictures: build/uisim_b build/uib
+$CC -O1 -Wall -Werror -Wno-unused-function -DPX_BASS=1 -Iengine -Ifirmware -o build/uisim_b tests/uisim.c engine/px_dsp.c firmware/px_math.c -lm
 build/uisim build/ui > build/ui/log.txt
 if grep -q "never drawn" build/ui/log.txt; then grep "never drawn" build/ui/log.txt; echo "screen: FAIL"; exit 1; else echo "screen: $(wc -l < build/ui/log.txt) pages ok (build/ui/*.ppm)"; fi
 echo "== MIDI (firmware/px_midi.h: decoder, Control Change map, what the pedal sends, settings, clock)"

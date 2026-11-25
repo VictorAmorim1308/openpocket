@@ -320,6 +320,150 @@ static void draw_info(int force)       /* the selected block: label, model (v42:
     uc.info_b = b; uc.info_t = t; uc.info_on = on; uc.info_m = m;
 }
 
+#if PX_BASS
+/* ---- OpenPocket Bass PLAY: a pedalboard. The preset big at the top; the chain as six pedals (3 x 2, in the preset's
+ * order, joined by cables), each with its LED, its model (the NAM capture, the IR's name...) and its main knob as a bar
+ * (the EQ: its three bands); the input level under them. Every pedal is redrawn only when what it shows changed. ----
+ *  +------------------------------+
+ *  | VOL 80      [=] 72%   DSP 42%|
+ *  | 07  SVT CLASSIC        EDITED|
+ *  |-------------------------------|
+ *  | [GATE  o]>[OCTAVE o]>[COMP  o]|
+ *  | [EQ    o]>[AMP   o]>[CAB   o]|
+ *  | IN ==========-------------   |
+ *  | KNOB: BLOCK  PUSH: EDIT ...  |
+ *  +------------------------------+ */
+#define BP_X0   3u
+#define BP_Y0   84u
+#define BP_W    74u
+#define BP_H    56u
+#define BP_DX   80u
+#define BP_DY   62u
+#define BP_MY   212u                   /* the input meter */
+#define BP_MX   30u
+#define BP_MW   204u
+static uint32_t bp_key[6];             /* what each pedal shows (0: not drawn) */
+static int bp_meter = -1;
+static const char *bp_label(int b)
+{
+    return b == PX_B_GATE ? "GATE" : b == PX_B_PITCH ? "OCTAVE" : b == PX_B_COMP ? "COMP" : b == PX_B_EQ ? "EQ"
+         : b == PX_B_AMP ? "AMP" : b == PX_B_CAB ? "CAB" : px_block_label(b);
+}
+static int bp_main(int b)              /* the setting a pedal's bar shows (-1: the EQ's bands) */
+{
+    return b == PX_B_PITCH ? 1 : b == PX_B_AMP ? 1 : b == PX_B_CAB ? 3 : b == PX_B_EQ ? -1 : 0;
+}
+static void bp_model(int b, char *nm12)
+{
+    int t = PRESET.type[b], m = ui_list_n(b, t, 0) ? ui_list_of(b, PRESET.p[b][0]) : -1;
+    const char *tn = px_type_name(b, t);
+    if (m >= 0 && ui_list_name(b, m, nm12)) return;
+    if (m >= 0) tn = b == PX_B_AMP ? "EMPTY" : "NO IR";
+    if (b == PX_B_GATE) tn = "NOISE";                  /* ("NOISE GATE" is cut at the pedal's width) */
+    int i = 0;
+    for (; i < 11 && tn[i]; i++) nm12[i] = tn[i];
+    nm12[i] = 0;
+}
+static void bp_pedal(int i, int b)
+{
+    const uint32_t x = BP_X0 + (uint32_t)(i % 3) * BP_DX, y = BP_Y0 + (uint32_t)(i / 3) * BP_DY;
+    const int on = PRESET.on[b] != 0, sel = b == (int)ui_blk, mv = sel && ui_mode == M_MOVE, k = bp_main(b);
+    const uint16_t col = BLK_COL[b], body = mv ? ui_dark(UI_ACC) : on ? ui_dark(col) : C_OFF;
+    char nm[12];
+    bp_model(b, nm);
+    uint32_t key = 2166136261u;
+    const uint8_t *q = PRESET.p[b];
+    key = (key ^ (uint32_t)b) * 16777619u; key = (key ^ (uint32_t)(on | sel << 1 | mv << 2)) * 16777619u;
+    key = (key ^ PRESET.type[b]) * 16777619u;
+    for (int j = 0; j < PX_NPAR; j++) key = (key ^ q[j]) * 16777619u;
+    for (int j = 0; nm[j]; j++) key = (key ^ (uint8_t)nm[j]) * 16777619u;
+    if (!key) key = 1;
+    if (bp_key[i] == key) return;
+    bp_key[i] = key;
+    ui_rbox(x - 2u, y - 2u, BP_W + 4u, BP_H + 4u, 6, sel ? WHT : UI_BG, UI_BG);   /* the selection ring (or nothing) */
+    ui_rbox(x, y, BP_W, BP_H, 6, body, sel ? WHT : UI_BG);
+    lcd_rect(x + 6u, y + 3u, BP_W - 12u, 2, on || mv ? col : ft_mix(col, C_OFF, 6));   /* the pedal's colour strip */
+    ft_box(x + 6u, y + 7u, BP_W - 22u, bp_label(b), &FT_SM, on || mv ? WHT : ft_mix(col, C_OFF, 11), body, 0);
+    ui_rbox(x + BP_W - 14u, y + 10u, 8, 8, 4, on ? col : ft_mix(UI_DIM, C_OFF, 6), body);   /* the LED */
+    ft_box(x + 6u, y + 23u, BP_W - 10u, nm, &FT_SM, on ? UI_TXT : UI_DIM, body, 0);
+    const uint32_t bx = x + 6u, bw = BP_W - 12u, by = y + 42u;
+    const uint16_t fill = on ? col : ft_mix(col, C_OFF, 7), rest = ft_mix(C_BAR, body, 10);
+    if (k >= 0) {                                      /* the main knob as a bar */
+        uint32_t f = (uint32_t)q[k] * bw / 100u;
+        lcd_rect(bx, by, bw, 3, body); lcd_rect(bx, by + 8u, bw, 3, body);
+        if (f) lcd_rect(bx, by + 3u, f, 5, fill);
+        if (f < bw) lcd_rect(bx + f, by + 3u, bw - f, 5, rest);
+    } else {                                           /* the EQ: LOW, MID (its gain), HIGH around the middle line */
+        static const uint8_t BAND[3] = {0, 2, 4};
+        lcd_rect(bx, by, bw, 11, body);
+        for (int j = 0; j < 3; j++) {
+            const uint32_t cx = bx + (uint32_t)j * 22u, cw = 18u;
+            int d = ((int)q[BAND[j]] - 50) * 5 / 50;   /* -5..+5 px */
+            lcd_rect(cx, by + 5u, cw, 1, rest);
+            if (d > 0) lcd_rect(cx, by + 5u - (uint32_t)d, cw, (uint32_t)d, fill);
+            if (d < 0) lcd_rect(cx, by + 6u, cw, (uint32_t)-d, fill);
+        }
+    }
+}
+static void bp_cables(void)            /* the cables between the pedals of a row, and down from the row's end */
+{
+    for (int r = 0; r < 2; r++)
+        for (int c = 0; c < 2; c++) {
+            const uint32_t gx = BP_X0 + (uint32_t)c * BP_DX + BP_W + 2u, gy = BP_Y0 + (uint32_t)r * BP_DY + BP_H / 2u;
+            lcd_rect(gx, gy - 1u, 2, 3, C_LINE);
+        }
+}
+static void bp_play_top(int force)
+{
+    if (force || uc.preset != cur_preset) {
+        char b[4]; uint32_t n = cur_preset + 1u;
+        b[0] = (char)('0' + n / 10u); b[1] = (char)('0' + n % 10u); b[2] = 0;
+        ft_box(6, 26, 80, b, &FT_XL, UI_ACC, UI_BG, 0);
+        uc.preset = cur_preset;
+    }
+    int nchg = force;
+    for (int i = 0; i < 14; i++) if (uc.name[i] != PRESET.name[i]) nchg = 1;
+    if (nchg) {
+        ft_box(90, 28, 146, PRESET.name, &FT_MD, UI_TXT, UI_BG, 0);
+        for (int i = 0; i < 14; i++) uc.name[i] = PRESET.name[i];
+    }
+    int d = ui_dirty();
+    if (force || d != uc.dirty) { ft_box(90, 54, 146, d ? "EDITED" : "", &FT_SM, UI_ACC, UI_BG, 0); uc.dirty = d; }
+}
+static void bp_pedals(int force)
+{
+    uint8_t v[PX_NBLK];
+    ui_order_fix();
+    const int n = ui_vis(v);
+    if (force) { for (int i = 0; i < 6; i++) bp_key[i] = 0; bp_cables(); }
+    for (int i = 0; i < 6; i++) {
+        if (i < n) bp_pedal(i, v[i]);
+        else if (bp_key[i] != 1u) {                    /* (fewer blocks: the place stays empty) */
+            const uint32_t x = BP_X0 + (uint32_t)(i % 3) * BP_DX, y = BP_Y0 + (uint32_t)(i / 3) * BP_DY;
+            lcd_rect(x - 2u, y - 2u, BP_W + 4u, BP_H + 4u, UI_BG); bp_key[i] = 1u;
+        }
+    }
+}
+static void bp_input(int force)        /* the input level, -60..0 dBFS: green, amber from -12, red from -3 */
+{
+    int db = a_level_db(0), d1 = a_level_db(1);
+    if (d1 > db) db = d1;
+    if (db < -60) db = -60;
+    if (db > 0) db = 0;
+    int w = (db + 60) * (int)BP_MW / 60;
+    w -= w % 4;                                        /* (in steps of 4 px: the bar does not flicker on noise) */
+    if (!force && w == bp_meter) return;
+    if (force) { ft_box(4, BP_MY - 5u, 26, "IN", &FT_SM, UI_DIM, UI_BG, 0); }
+    const int g = 48 * (int)BP_MW / 60, a = 57 * (int)BP_MW / 60;   /* -12 and -3 dB */
+    for (int s = 0; s < (int)BP_MW; s += 4) {
+        if (!force && bp_meter >= 0 && (s < (w < bp_meter ? w : bp_meter) || s >= (w > bp_meter ? w : bp_meter))) continue;
+        const uint16_t c = s < g ? GRN : s < a ? YEL : RED;
+        lcd_rect(BP_MX + (uint32_t)s, BP_MY, 3, 6, s < w ? c : ft_mix(c, UI_BG, 3));
+    }
+    bp_meter = w;
+}
+#endif
+
 /* ===================================================== EDIT ======== */
 static void draw_band(int force)       /* the block's name on its colour, ON / OFF pill (item 1) */
 {
@@ -454,6 +598,13 @@ static void ui_render(void)
     if (scr != uc.screen) { uc.screen = scr; uc.full = 1; }
     int f = uc.full;
     if (f) {                                                     /* page change: background drawn once */
+#if PX_BASS
+        if (scr == 0) {
+            lcd_rect(0, 0, 240, S_H, UI_PANEL);
+            lcd_rect(0, S_H, 240, F_Y - S_H, UI_BG);
+            lcd_rect(12, 76, 216, 1, C_LINE);
+        } else
+#endif
         if (scr == 0) {
             lcd_rect(0, 0, 240, S_H, UI_PANEL);
             lcd_rect(0, S_H, 240, P_NUM_Y - S_H, UI_BG);
@@ -477,9 +628,15 @@ static void ui_render(void)
     }
     if (scr == 0) {
         draw_status(f);
+#if PX_BASS
+        bp_play_top(f);
+        bp_pedals(f);
+        bp_input(f);
+#else
         draw_play_top(f);
         draw_tiles(f);
         draw_info(f);
+#endif
     } else draw_edit(f);
     draw_hint(f);
     if (f) { char s[12]; for (int i = 0; i < 12; i++) s[i] = uc.status[i]; uc.full = 1; ui_status(s, uc.status_kind); uc.full = 0; }
