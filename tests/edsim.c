@@ -276,7 +276,7 @@ static void json_list(const uint8_t *a, int n)
 }
 static void status(void)
 {
-    static const char *const MODE[] = {"chain", "block", "edit", "tuner", "save", "move", "midi", "list", "diag"};
+    static const char *const MODE[] = {"chain", "block", "edit", "tuner", "save", "move", "midi", "list", "diag", "pvol"};
     frame_draw();
     printf("#status {\"slot\":%u,\"name\":", cur_preset);
     json_str(PRESET.name);

@@ -104,8 +104,8 @@ static void ed_state_frame(void)
 }
 static void ed_ui_fix(void)                       /* the block page after a type change, a new preset... */
 {
-    if (ui_mode == M_EDIT && ui_item >= 2u + (uint32_t)px_nparams((int)ui_blk, PRESET.type[ui_blk])) ui_mode = M_BLOCK;
-    if (ui_item >= 2u + (uint32_t)px_nparams((int)ui_blk, PRESET.type[ui_blk])) ui_item = 0;
+    if (ui_mode == M_EDIT && ui_item >= (uint32_t)ui_nitems()) ui_mode = M_BLOCK;
+    if (ui_item >= (uint32_t)ui_nitems()) ui_item = 0;
 }
 
 static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the command byte */

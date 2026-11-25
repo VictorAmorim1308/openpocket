@@ -81,7 +81,14 @@ tirados. Os botões MOD, DLY e REV abrem o EQ, a oitava e o compressor.
 ## AMP e CAB (OpenPocket Bass)
 
 - **AMP é sempre NAM** (não há outros amps pra escolher): MODEL (a captura), GAIN (o quanto a captura é empurrada: mais
-  saturação; metade da mudança de volume é compensada), BASS e TREBLE (atalhos de grave e agudo; o médio fica no bloco
-  EQ) e **LEVEL** (o volume do amp, ±12 dB).
-- **CAB é sempre USER IR**: IR, LOW CUT, HIGH CUT e **MIX**. O MIX dosa só o gabinete: 100 é tudo IR, 0 é a saída do amp
-  sem IR. Ele não mexe no resto da cadeia.
+  saturação; metade da mudança de volume é compensada), BASS, MID (600 Hz), TREBLE e **LEVEL** (o volume do amp, ±12 dB).
+  O LEVEL é o 6º ajuste: fica guardado no primeiro ajuste do bloco SFX, que não existe na cadeia de baixo.
+- **CAB é sempre USER IR**: IR, LOW CUT, HIGH CUT, **MIX** e **LEVEL**. O MIX dosa só o gabinete: 100 é tudo IR, 0 é a
+  saída do amp sem IR. O LEVEL é o volume do lado do IR (±12 dB), antes do MIX.
+- AMP e CAB não têm a linha de modelo: a captura e o IR ficam no topo da página.
+
+## Volume do preset na tela principal
+
+Na tela principal, o knob para no **VOL** (ao lado do nome) antes do primeiro pedal. Com ele marcado, o PUSH entra no
+ajuste (fica laranja), o knob muda o volume do preset (0,3 dB por passo, de −15 a +15 dB) e o PUSH confirma. Segure o
+PUSH pra salvar no preset. O knob MASTER continua sendo o volume geral.

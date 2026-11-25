@@ -229,7 +229,17 @@ function renderPage(fromPush) {
         range && h("output", { class: "val", for: id })));
     });
     if (!T.params.length) box.append(h("p", { class: "dim", text: "This type has no settings." }));
+    if (ampLevel(b)) {   // OpenPocket Bass: the AMP's LEVEL, kept in the first setting of the SFX block (not in the chain)
+      const ctl = h("input", { type: "range", id: "pamplvl", min: 0, max: 100, step: 1 });
+      ctl.oninput = () => { ctl.style.setProperty("--p", `${ctl.value}%`); ctl.parentElement.querySelector(".val").textContent = ctl.value; sendParam(SFX, 0, +ctl.value); };
+      box.append(h("div", { class: "prm" }, h("label", { for: "pamplvl", text: "LEVEL" }), ctl, h("output", { class: "val", for: "pamplvl" })));
+    }
     box.dataset.sig = sig;
+  }
+  if (ampLevel(b)) {
+    const c = $("pamplvl");
+    if (document.activeElement !== c) c.value = p.p[SFX][0];
+    c.style.setProperty("--p", `${c.value}%`); c.parentElement.querySelector(".val").textContent = c.value;
   }
   T.params.forEach((_, k) => {
     const c = $(`p${k}`), v = p.p[b][k];
@@ -239,6 +249,8 @@ function renderPage(fromPush) {
   });
   renderNote();
 }
+const SFX = 3;                                        // (engine/px_dsp.h PX_AMP_LVL_B: PX_B_SFX)
+const ampLevel = (b) => blk(b).label === "AMP" && blk(b).fixed >= 0;
 function showVal(k) {
   const c = $(`p${k}`), b = app.focus, p = app.st.preset, param = typeOf(p, b).params[k];
   if (!c || !param) return;

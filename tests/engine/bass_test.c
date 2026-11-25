@@ -43,6 +43,10 @@ static void bass_preset(px_preset_t *p, int blend, int clv, int nam_on)
     p->on[PX_B_CAB] = 1; p->type[PX_B_CAB] = PX_CAB_IR;
     p->p[PX_B_CAB][0] = (uint8_t)px_ir_knob(0); p->p[PX_B_CAB][1] = 0; p->p[PX_B_CAB][2] = 0;
     p->p[PX_B_CAB][3] = (uint8_t)blend; p->p[PX_B_CAB][4] = (uint8_t)clv;
+#if PX_BASS
+    p->p[PX_B_CAB][4] = 50;                              /* (Bass: LEVEL 0 dB; BLEND SRC is gone) */
+    p->p[PX_AMP_LVL_B][PX_AMP_LVL_K] = 50;               /* the amp's LEVEL, 0 dB */
+#endif
 }
 
 static void run_plain(const px_preset_t *p, const float *in, float *out, int nfr)
@@ -119,10 +123,13 @@ int main(void)
         CHECK(e2 / r2 < 1e-6, m);
         bass_preset(&pm, 100, 0, 1);                      /* MIX 100: whatever BLEND SRC said, all IR */
         run_plain(&pm, sig, a, FR * NB);
-        bass_preset(&q, 100, 90, 1);
+        bass_preset(&q, 100, 0, 1); q.p[PX_B_CAB][4] = 25;   /* CAB LEVEL 25: -6 dB at MIX 100 */
         run_plain(&q, sig, b, FR * NB);
-        CHECK(!memcmp(a, b, sizeof a), "MIX 100: the old BLEND SRC (5th setting) changes nothing");
-        CHECK(px_nparams(PX_B_CAB, PX_CAB_IR) == 4 && !strcmp(px_param_name(PX_B_CAB, PX_CAB_IR, 3), "MIX"), "CAB: IR, LOW CUT, HIGH CUT, MIX");
+        { double ea = 0, eb = 0; for (int i = 4096; i < FR * NB; i++) { ea += (double)a[i] * a[i]; eb += (double)b[i] * b[i]; }
+          snprintf(m, sizeof m, "CAB LEVEL 25 at MIX 100: %.1f dB", 10 * log10(eb / ea));
+          CHECK(10 * log10(eb / ea) < -5.0 && 10 * log10(eb / ea) > -6.5, m); }   /* (the 0 dB one meets the output soft clipper a little) */
+        CHECK(px_nparams(PX_B_CAB, PX_CAB_IR) == 5 && !strcmp(px_param_name(PX_B_CAB, PX_CAB_IR, 3), "MIX") &&
+              !strcmp(px_param_name(PX_B_CAB, PX_CAB_IR, 4), "LEVEL"), "CAB: IR, LOW CUT, HIGH CUT, MIX, LEVEL");
         static float nb2[2][FR], cl2[2][FR];              /* MIX 50 through the pipeline */
         bass_preset(&pm, 50, 0, 1);
         run_plain(&pm, sig, ref, FR * NB);
@@ -136,11 +143,11 @@ int main(void)
         }
         CHECK(!memcmp(ref, got, sizeof(float) * FR * (NB - 1)), "MIX 50: the pipeline = the plain engine, one block later");
         /* NAM: LEVEL 0 is -12 dB, 25 -6 dB (above 50 this loud test signal meets the output's soft clipper) */
-        CHECK(!strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 1), "GAIN") && !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 3), "TREBLE") &&
-              !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 4), "LEVEL"), "NAM: MODEL, GAIN, BASS, TREBLE, LEVEL");
+        CHECK(!strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 1), "GAIN") && !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 3), "MID") &&
+              !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 4), "TREBLE"), "NAM: MODEL, GAIN, BASS, MID, TREBLE (and LEVEL in the SFX block's 1st)");
         double lv[3];
         for (int j = 0; j < 3; j++) {
-            bass_preset(&pm, 0, 0, 1); pm.on[PX_B_CAB] = 0; pm.p[PX_B_AMP][4] = (uint8_t)(j * 25);
+            bass_preset(&pm, 0, 0, 1); pm.on[PX_B_CAB] = 0; pm.p[PX_AMP_LVL_B][PX_AMP_LVL_K] = (uint8_t)(j * 25);
             run_plain(&pm, sig, a, FR * NB);
             double en = 0; for (int i = 4096; i < FR * NB; i++) en += (double)a[i] * a[i];
             lv[j] = 10 * log10(en + 1e-30);
@@ -149,7 +156,7 @@ int main(void)
         CHECK(fabs(lv[0] - lv[2] + 12.0) < 0.3 && fabs(lv[1] - lv[2] + 6.0) < 0.3, m);
         lv[1] = lv[2];
         /* GAIN 100 drives the capture 12 dB harder; half of that is taken back at its output */
-        bass_preset(&pm, 0, 0, 1); pm.on[PX_B_CAB] = 0; pm.p[PX_B_AMP][1] = 100;
+        bass_preset(&pm, 0, 0, 1); pm.on[PX_B_CAB] = 0; pm.p[PX_B_AMP][1] = 100; pm.p[PX_AMP_LVL_B][PX_AMP_LVL_K] = 50;
         run_plain(&pm, sig, a, FR * NB);
         double en = 0; for (int i = 4096; i < FR * NB; i++) en += (double)a[i] * a[i];
         snprintf(m, sizeof m, "NAM GAIN 100: %+.1f dB against 50 (12 dB in, 6 dB taken back: at most +6)", 10 * log10(en + 1e-30) - lv[1]);

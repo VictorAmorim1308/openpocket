@@ -73,6 +73,7 @@ static inline float lfo_tri(float ph) { return 4.0f * px_abs(ph - 0.5f) - 1.0f; 
 static struct {
     float ir_bl, ir_bz, ir_cg; int ir_src;           /* ir_src: BLEND SRC, 0 = DI (the amp's input), 1 = AMP (the IR's input) */
     float nam_base;                                    /* the loaded capture's output level (its trim), before LEVEL */
+    float ir_lv;                                       /* CAB LEVEL (OpenPocket Bass), on the IR's output */
     px_bq mod_hpw, mod_hpd;
     float oct_ea, oct_er;
     px_bq oct_ua, oct_ub;
@@ -545,17 +546,14 @@ static const tdef T_REV[PX_REV_COUNT] = {
 
 /* ------------------------------------------------------------ catalog API --- */
 static const char *const PN_AMP[] = {"GAIN", "BASS", "MID", "TREBLE", "PRESENCE"};
-#if PX_BASS
-/* OpenPocket Bass: GAIN drives the capture (more saturation; half of its level change is taken back), LEVEL is the amp's
- * volume (+-12 dB); the middle is the EQ block's: BASS and TREBLE stay as quick shelves */
-static const char *const PN_NAM[] = {"MODEL", "GAIN", "BASS", "TREBLE", "LEVEL"};
-#else
+/* (OpenPocket Bass: GAIN drives the capture, half of its level change taken back; the amp's LEVEL is a 6th setting, kept
+ * in the SFX block's first, a block the bass chain does not use: px_dsp.h PX_AMP_LVL_B) */
 static const char *const PN_NAM[] = {"MODEL", "GAIN", "BASS", "MID", "TREBLE"};
-#endif
 static const char *const PN_CAB[] = {"BODY", "BRIGHT", "MIC"};
 #if PX_BASS
-/* OpenPocket Bass: MIX doses the cabinet alone: the amp's output without the IR against it through the IR (0: no IR) */
-static const char *const PN_CABIR[] = {"IR", "LOW CUT", "HIGH CUT", "MIX"};
+/* OpenPocket Bass: MIX doses the cabinet alone: the amp's output without the IR against it through the IR (0: no IR);
+ * LEVEL: the cabinet's own level (+-12 dB), before MIX */
+static const char *const PN_CABIR[] = {"IR", "LOW CUT", "HIGH CUT", "MIX", "LEVEL"};
 #else
 static const char *const PN_CABIR[] = {"IR", "LOW CUT", "HIGH CUT", "BLEND", "BLEND SRC"};   /* v38; BLEND, BLEND SRC: OpenPocket Bass */
 #endif
@@ -603,7 +601,7 @@ int px_nparams(int b, int t)
     if (t < 0 || t >= px_ntypes(b)) t = 0;
     if (b == PX_B_DRIVE) return DV[t].np;
     if (b == PX_B_AMP) return 5;
-    if (b == PX_B_CAB) return t == PX_CAB_DI ? 0 : t == PX_CAB_IR ? (PX_BASS ? 4 : 5) : 3;
+    if (b == PX_B_CAB) return t == PX_CAB_DI ? 0 : t == PX_CAB_IR ? 5 : 3;
     const tdef *d = tdef_of(b, t);
     return d ? d->np : 0;
 }
@@ -709,7 +707,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         }
         if (t == PX_CAB_IR && k == 1) { put_int(buf, (int)(ir_lo_hz(v) + 0.5f), 0); return 1; }
         if (t == PX_CAB_IR && k == 2) { put_int(buf, (int)(ir_hi_hz(v) + 0.5f), 0); return 1; }
-        if (t == PX_CAB_IR && k == 4) { static const char *const S[4] = {"DI", "AMP", "DI INV", "AMP INV"}; put_str(buf, S[ir_src_of(v)]); return 1; }
+        if (t == PX_CAB_IR && k == 4 && !PX_BASS) { static const char *const S[4] = {"DI", "AMP", "DI INV", "AMP INV"}; put_str(buf, S[ir_src_of(v)]); return 1; }
         break;
     case PX_B_AMP:
         if (t == PX_AMP_NAM && k == 0) {               /* the model's name */
@@ -807,7 +805,7 @@ enum { M_TWIN, M_AC15, M_SUPER59, M_SHIRLCL, M_JCM900, M_SHIRLEY, M_JCM2000, M_M
  * 20^(v/100) (46 = 80 Hz); HIGH CUT 20 kHz x 0.1^(v/100) (0 = off, 60 = 5 kHz) */
 #define UNAM(s, g) blk(p, PX_B_AMP, 1, PX_AMP_NAM, px_nam_knob(PX_NAM_NFACT + (s)), g, 50, 50, 50)
 #define BEQ(lo, mf, mg, mq, hi) blk(p, PX_B_EQ, 1, PX_EQ_BASS, lo, mf, mg, mq, hi)
-#define BIR(s, lc, hc, bl) blk(p, PX_B_CAB, 1, PX_CAB_IR, px_ir_knob(s), lc, hc, 100 - (bl), 0)   /* (MIX: 100 - the clean share) */
+#define BIR(s, lc, hc, bl) blk(p, PX_B_CAB, 1, PX_CAB_IR, px_ir_knob(s), lc, hc, 100 - (bl), 50)   /* (MIX: 100 - the clean share) */
 static void bass_factory(px_preset_t *p, int idx)
 {
     base_preset(p);
@@ -815,6 +813,7 @@ static void bass_factory(px_preset_t *p, int idx)
     blk(p, PX_B_COMP, 0, PX_CMP_STUDIO, 40, 40, 70, 60, 0);   /* (off: there if wanted) */
     blk(p, PX_B_PITCH, 0, PX_PIT_BASSOCT, 70, 60, 0, 40, 30);
     blk(p, PX_B_GATE, 0, 0, 15, 50, 50, 0, 0);
+    blk(p, PX_B_SFX, 0, 0, 50, 0, 0, 0, 0);            /* (the SFX block's first setting: the amp's LEVEL, 0 dB) */
     BEQ(50, 50, 50, 11, 50);
     UNAM(0, 50); BIR(0, 0, 0, 0);
     switch (idx) {
@@ -1403,9 +1402,10 @@ static void rc_nam(px_engine *e)
     e->nam_in_g = (1.0f / 0.15f) * powf(10.0f, (f01(q[1]) - 0.5f) * 24.0f * 0.05f);
     bq_lowshelf(&e->ts_low, sr, 120.0f, (f01(q[2]) - 0.5f) * 20.0f);
 #if PX_BASS
-    bq_ident(&e->ts_mid);
-    bq_highshelf(&e->ts_high, sr, 2500.0f, (f01(q[3]) - 0.5f) * 20.0f);
-    e->nam_out_g = pxb.nam_base * powf(10.0f, ((f01(q[4]) - 0.5f) * 24.0f - (f01(q[1]) - 0.5f) * 12.0f) * 0.05f);
+    bq_peak(&e->ts_mid, sr, 600.0f, 0.7f, (f01(q[3]) - 0.5f) * 16.0f);   /* a bass amp's middle */
+    bq_highshelf(&e->ts_high, sr, 2500.0f, (f01(q[4]) - 0.5f) * 20.0f);
+    const float lvl = f01(p->p[PX_AMP_LVL_B][PX_AMP_LVL_K]);
+    e->nam_out_g = pxb.nam_base * powf(10.0f, ((lvl - 0.5f) * 24.0f - (f01(q[1]) - 0.5f) * 12.0f) * 0.05f);
 #else
     bq_peak(&e->ts_mid, sr, 800.0f, 0.7f, (f01(q[3]) - 0.5f) * 16.0f);
     bq_highshelf(&e->ts_high, sr, 2500.0f, (f01(q[4]) - 0.5f) * 20.0f);
@@ -1755,6 +1755,7 @@ static void rc_cab_ir(px_engine *e)
 #if PX_BASS
     pxb.ir_bl = 1.0f - f01(q[3]);                       /* MIX 100: all IR; 0: the IR's input alone */
     pxb.ir_src = 1; pxb.ir_cg = 1.0f;
+    pxb.ir_lv = powf(10.0f, (f01(q[4]) - 0.5f) * 24.0f * 0.05f);   /* LEVEL: +-12 dB on the IR's side */
 #else
     pxb.ir_bl = f01(q[3]);                              /* OpenPocket Bass: BLEND, and the clean signal's polarity: an */
     pxb.ir_src = ir_src_of(q[4]) & 1;
@@ -2358,7 +2359,7 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
         switch (b) {
         case PX_B_GATE: case PX_B_COMP: rc_dyn(e); break;
         case PX_B_PITCH: rc_pitch(e); break;
-        case PX_B_SFX: rc_sfx(e); break;
+        case PX_B_SFX: if (PX_BASS) rc_amp(e); else rc_sfx(e); break;   /* (Bass: it holds the amp's LEVEL) */
         case PX_B_DRIVE: rc_drive(e); break;
         case PX_B_AMP: rc_amp(e); break;
         case PX_B_CAB: rc_cab(e); break;
@@ -3665,6 +3666,9 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                 }
                 if (ir_ok && n == IR_B) ir_run(xb);      /* (blocks of 64 as on the pedal; other sizes pass) */
                 bq_block2(&e->ir_lo, &e->ir_hi, xb, n);
+#if PX_BASS
+                { const float lv = pxb.ir_lv; for (int k = 0; k < n; k++) xb[k] *= lv; }
+#endif
                 if (cs) {                                /* wet (1 - b) + clean * CLEAN LV * b, b ramped over the block */
                     const float db = (bl1 - bl0) / (float)n, cg = pxb.ir_cg;
                     float b = bl0;
