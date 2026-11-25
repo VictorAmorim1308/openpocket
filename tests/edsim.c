@@ -44,7 +44,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef EDSIM_WASM
 #include <sys/select.h>
+#endif
 #include <sys/time.h>
 #include <unistd.h>
 #include <math.h>
@@ -179,7 +181,7 @@ static void sim_ble(const char *l)
 #include "../firmware/px_editor.h"
 
 static int hexv(int c) { return c <= '9' ? c - '0' : (c | 32) - 'a' + 10; }
-static int closed;
+static int closed __attribute__((unused));
 static void pedal(const char *l)
 {
     int b, k, v;
@@ -314,7 +316,7 @@ static int write_flash(const char *path)                /* whole, or not at all:
     if (fclose(f)) { remove(tmp); return -1; }
     return rename(tmp, path);
 }
-static const char *persist;
+static const char *persist __attribute__((unused));
 
 static void command(const char *l)
 {
@@ -377,6 +379,8 @@ static void command(const char *l)
         fflush(stdout);
     }
 }
+static void sim_line(char *line);
+#ifndef EDSIM_WASM
 static void poll_in(uint32_t ms)
 {
     static char line[8192];
@@ -396,19 +400,53 @@ static void poll_in(uint32_t ms)
     }
     line[ll] = 0;
     ll = 0;
-    if (line[0] == '#') { command(line); return; }
-    {
-        uint32_t n = 0, i;
-        uint8_t m[4096];
-        for (i = 0; line[i] && line[i + 1] && n < sizeof m; i += 2) m[n++] = (uint8_t)(hexv(line[i]) << 4 | hexv(line[i + 1]));
-        if (n >= 2 && m[0] == 0xF0 && m[n - 1] == 0xF7 && n - 2 <= sizeof frame) {   /* usb.c: the bytes between F0 and F7 */
-            memcpy(frame, m + 1, n - 2);
-            frame_len = n - 2;
-            frame_full = 1;
-        }
-    }
+    sim_line(line);
 }
 
+#endif
+static void sim_line(char *line)                       /* a line from the harness: a '#' command or a MIDI message in hex */
+{
+    if (line[0] == '#') { command(line); return; }
+    uint32_t n = 0, i;
+    static uint8_t m[4096];
+    for (i = 0; line[i] && line[i + 1] && n < sizeof m; i += 2) m[n++] = (uint8_t)(hexv(line[i]) << 4 | hexv(line[i + 1]));
+    if (n >= 2 && m[0] == 0xF0 && m[n - 1] == 0xF7 && n - 2 <= sizeof frame) {   /* usb.c: the bytes between F0 and F7 */
+        memcpy(frame, m + 1, n - 2);
+        frame_len = n - 2;
+        frame_full = 1;
+    }
+}
+#ifdef EDSIM_WASM
+/* OpenPocket Bass: the same pedal in a web page (docs/sim/, built by tools/sim/web.sh): no stdin, no files. The page
+ * hands in the flash (or leaves it blank), sends lines, steps the main loop, reads the screen and saves the flash. */
+static char ed_in[8192];
+__attribute__((export_name("ed_inbuf"))) char *ed_inbuf(void) { return ed_in; }
+__attribute__((export_name("ed_nor"))) uint8_t *ed_nor(void) { return nor; }
+__attribute__((export_name("ed_fb"))) uint16_t *ed_fb(void) { return fb; }
+__attribute__((export_name("ed_init"))) void ed_init(int blank)
+{
+    if (blank) memset(nor, 0xFF, sizeof nor);
+    px_store_boot();
+    nm_scan();
+    ir_scan();
+    uc.screen = -1;
+    ui_invalidate();
+    printf("#port OpenPocket\n");
+    fflush(stdout);
+}
+__attribute__((export_name("ed_line"))) void ed_line(void) { sim_line(ed_in); fflush(stdout); }
+__attribute__((export_name("ed_step"))) int ed_step(void)   /* 1: the flash changed since the last call */
+{
+    ed_service(ms_now());
+    buttons_service(ms_now());
+    frame_draw();
+    fflush(stdout);
+    int d = flash_dirty;
+    flash_dirty = 0;
+    return d;
+}
+int main(void) { return 0; }
+#else
 int main(int argc, char **argv)
 {
     const char *dump = 0;
@@ -442,3 +480,4 @@ int main(int argc, char **argv)
     if (dump) { FILE *f = fopen(dump, "wb"); if (f) { fwrite(nor, 1, sizeof nor, f); fclose(f); } }
     return 0;
 }
+#endif
