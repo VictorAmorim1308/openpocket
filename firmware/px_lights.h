@@ -22,11 +22,17 @@ static uint8_t lights_of(const px_preset_t *p, int tuner, uint32_t now)   /* the
 {
     uint8_t v = 0;
     for (int i = 0; i < 7; i++)
-        if (p->on[UI_FXB[i]]) v |= 1u << LT_FX;
+        if (p->on[UI_FXB[i]] && px_block_used(UI_FXB[i])) v |= 1u << LT_FX;
     if (p->on[PX_B_AMP]) v |= 1u << LT_AMP;
+#if PX_BASS
+    if (p->on[PX_B_EQ]) v |= 1u << LT_MOD;                           /* OpenPocket Bass: the MOD key is EQ, DLY the */
+    if (p->on[PX_B_PITCH]) v |= 1u << LT_DLY;                        /* octave, REV the compressor (ui.h BLK_OF) */
+    if (p->on[PX_B_COMP]) v |= 1u << LT_REV;
+#else
     if (p->on[PX_B_MOD]) v |= 1u << LT_MOD;
     if (p->on[PX_B_DELAY]) v |= 1u << LT_DLY;
     if (p->on[PX_B_REVERB]) v |= 1u << LT_REV;
+#endif
     if (p->on[PX_B_CAB]) v |= 1u << LT_CAB;
     if (tuner && !((now / LT_BLINK_MS) & 1u)) v |= 1u << LT_HOME;
     return v;

@@ -123,6 +123,7 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
         if (n < 1u || a[0] >= PX_NBLK) return;
         ed_b(a[0]); ed_str(px_block_label(a[0]), 15); ed_str(px_block_name(a[0]), 31); ed_b((uint32_t)px_ntypes(a[0]));
         { uint32_t c = BLK_COL[a[0]]; ed_b(c); ed_b(c >> 7); ed_b(c >> 14); }
+        ed_b(px_block_used((int)a[0]) ? 1u : 0u);      /* OpenPocket Bass: 0 = taken out of the chain (an older editor stops before it) */
         break;
     case ED_CAT_TYPE: {
         if (n < 2u || a[0] >= PX_NBLK || a[1] >= (uint32_t)px_ntypes(a[0])) return;
@@ -194,7 +195,7 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
         break;
     case ED_FOCUS:
         if (n < 1u || a[0] >= PX_NBLK) return;
-        if (ui_mode == M_CHAIN || ui_mode == M_BLOCK || ui_mode == M_EDIT) {
+        if (px_block_used((int)a[0]) && (ui_mode == M_CHAIN || ui_mode == M_BLOCK || ui_mode == M_EDIT)) {
             if (ui_blk != a[0]) { ui_blk = a[0]; ui_item = 0; }
             ui_mode = M_BLOCK;
         }

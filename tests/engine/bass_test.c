@@ -206,6 +206,10 @@ int main(void)
         double d = 0, r = 0;
         for (int i = 44100; i < 88192; i++) { d += (out[i] - off[i]) * (out[i] - off[i]); r += (double)off[i] * off[i]; }
         char m[96];
+#if PX_BASS
+        (void)m; (void)r;
+        CHECK(d == 0.0, "OpenPocket Bass: the MOD block is taken out, on or off the sound is the same");
+#else
         snprintf(m, sizeof m, "41 Hz at MIX 100 against the chorus off: the difference %.1f dB below it", -10 * log10(d / r));
         CHECK(d / r < 0.01, m);
         for (int i = 0; i < 88200; i++) in[i] = 0.25f * sinf(2.0f * 3.14159265f * 1000.0f * i / 44100.0f);
@@ -215,6 +219,7 @@ int main(void)
         for (int w = 44100; w + 441 <= 88192; w += 441) { float v = rms(out + w, 441); if (v < lo) lo = v; if (v > hi) hi = v; }
         snprintf(m, sizeof m, "1 kHz is chorused: its level swings %.1f dB", 20 * log10f(hi / lo));
         CHECK(20 * log10f(hi / lo) > 3.0f, m);
+#endif
     }
 
     printf("5. BASS PEQ\n");
@@ -331,8 +336,7 @@ int main(void)
             }
             if (!(ip < ie && ie < ia && ia < ic && ic < im)) eqfirst = 0;
             for (int b = 0; b < PX_NBLK; b++)
-                if (p.on[b] && b != PX_B_EQ && b != PX_B_AMP && b != PX_B_CAB && b != PX_B_MOD && b != PX_B_COMP &&
-                    b != PX_B_PITCH) ok = 0;
+                if (p.on[b] && (!px_block_used(b) || b == PX_B_GATE)) ok = 0;   /* (only the bass chain's blocks) */
             if (f < 3) printf("        %02d %s\n", f + 1, p.name);
             /* the plain engine and the pipeline agree on every preset that uses the NAM amp */
             if (p.on[PX_B_AMP] && f < 12) {

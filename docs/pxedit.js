@@ -144,7 +144,8 @@ export class Editor {
       const label = r.s(), name = r.s(), ntypes = r.b();
       const c = r.b() | r.b() << 7 | r.b() << 14;
       const rgb = `#${(((c >> 11) & 31) * 255 / 31 | 0).toString(16).padStart(2, "0")}${(((c >> 5) & 63) * 255 / 63 | 0).toString(16).padStart(2, "0")}${((c & 31) * 255 / 31 | 0).toString(16).padStart(2, "0")}`;
-      blocks.push({ label, name, color: rgb, types: new Array(ntypes) });
+      const used = r.i < r.a.length ? r.b() !== 0 : true;   // OpenPocket Bass: 0 = taken out of the chain (not shown)
+      blocks.push({ label, name, color: rgb, used, types: new Array(ntypes) });
     }
     const total = blocks.reduce((s, b) => s + b.types.length, 0);
     let done = 0;

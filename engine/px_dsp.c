@@ -802,7 +802,6 @@ static void bass_factory(px_preset_t *p, int idx)
     for (int b = 0; b < PX_NBLK; b++) p->on[b] = 0;
     blk(p, PX_B_COMP, 0, PX_CMP_STUDIO, 40, 40, 70, 60, 0);   /* (off: there if wanted) */
     blk(p, PX_B_PITCH, 0, PX_PIT_BASSOCT, 70, 60, 0, 40, 30);
-    blk(p, PX_B_MOD, 0, PX_MOD_BASSCHO, 30, 50, 50, 50, 0);
     blk(p, PX_B_GATE, 0, 0, 15, 50, 50, 0, 0);
     BEQ(50, 50, 50, 11, 50);
     UNAM(0, 50); BIR(0, 0, 0, 0);
@@ -822,8 +821,8 @@ static void bass_factory(px_preset_t *p, int idx)
     case 6: setname(p, "SLAP");                         /* lows and highs up, 500 Hz down */
         BEQ(67, 55, 25, 11, 67); UNAM(0, 45); BIR(0, 10, 0, 25);
         blk(p, PX_B_COMP, 1, PX_CMP_STUDIO, 50, 50, 70, 60, 0); break;
-    case 7: setname(p, "CHORUS");
-        UNAM(0, 50); BIR(0, 10, 50, 20); blk(p, PX_B_MOD, 1, PX_MOD_BASSCHO, 30, 50, 50, 50, 0); break;
+    case 7: setname(p, "COMP");                         /* (was CHORUS: the modulation is gone) the compressor on */
+        UNAM(0, 50); BIR(0, 10, 50, 20); blk(p, PX_B_COMP, 1, PX_CMP_STUDIO, 45, 40, 70, 60, 0); break;
     case 8: setname(p, "AMP 3"); UNAM(2, 50); BIR(2, 10, 50, 0); break;
     case 9: setname(p, "AMP 4"); UNAM(3, 50); BIR(3, 10, 50, 0); break;
     case 10: setname(p, "OITAVA");                      /* the octave down under the bass, a touch of the octave up */
@@ -2214,8 +2213,32 @@ void px_engine_init(px_engine *e, float sr)
     px_engine_set(e, &p);
 }
 static void wl_clear(px_engine *e);
+/* OpenPocket Bass: the bass chain only. GATE, COMP, PITCH (the octaver), EQ, AMP (NAM) and CAB (IR) run; SFX, DRIVE,
+ * MOD, DELAY, REVERB and SYN are taken out: the engine never runs them (off whatever a preset says), the screen and the
+ * editor do not show them. Presets keep their format (the blocks are there, off). */
+int px_block_used(int b)
+{
+#if PX_BASS
+    return b == PX_B_GATE || b == PX_B_COMP || b == PX_B_PITCH || b == PX_B_EQ || b == PX_B_AMP || b == PX_B_CAB;
+#else
+    return b >= 0 && b < PX_NBLK;
+#endif
+}
+static const px_preset_t *bass_only(const px_preset_t *p, px_preset_t *t)
+{
+#if PX_BASS
+    *t = *p;
+    for (int b = 0; b < PX_NBLK; b++) if (!px_block_used(b)) t->on[b] = 0;
+    return t;
+#else
+    (void)t;
+    return p;
+#endif
+}
 void px_engine_set(px_engine *e, const px_preset_t *p)
 {
+    px_preset_t bo;
+    p = bass_only(p, &bo);
     e->cur = *p;
     if (px_order_valid(p->order)) for (int i = 0; i < PX_NBLK; i++) e->ord[i] = p->order[i];
     else px_order_default(e->ord);
@@ -2254,6 +2277,8 @@ typedef char px_gl_room[GL_N <= PX_GL_MAX ? 1 : -1];
 static int nam_model_of(const px_preset_t *p) { return px_nam_model(p->p[PX_B_AMP][0]); }
 int px_engine_change(const px_engine *e, const px_preset_t *p)
 {
+    px_preset_t bo;
+    p = bass_only(p, &bo);
     const px_preset_t *c = &e->cur;
     uint8_t od[PX_NBLK];
     const uint8_t *o = p->order;
@@ -2286,6 +2311,8 @@ void px_engine_prepare(const px_engine *e, const px_preset_t *p)
 }
 void px_engine_knobs(px_engine *e, const px_preset_t *p)
 {
+    px_preset_t bo;
+    p = bass_only(p, &bo);
     float was[GL_N];
     for (int i = 0; i < GL_N; i++) was[i] = *GLP(e, i);
     const px_preset_t old = e->cur;

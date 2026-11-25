@@ -119,6 +119,9 @@ static int ui_list_place(int b, int n, int cur, int *count)   /* cur's place amo
 }
 static void ui_order_fix(void) { if (!px_order_valid(PRESET.order)) px_order_default(PRESET.order); }
 static int ui_pos_of(uint32_t b) { for (int i = 0; i < PX_NBLK; i++) if (PRESET.order[i] == b) return i; return 0; }
+/* OpenPocket Bass: the blocks shown (px_block_used), in the preset's order: how many, into v */
+static int ui_vis(uint8_t *v) { int n = 0; for (int i = 0; i < PX_NBLK; i++) if (px_block_used(PRESET.order[i])) v[n++] = PRESET.order[i]; return n; }
+static int ui_vpos_of(const uint8_t *v, int n, uint32_t b) { for (int i = 0; i < n; i++) if (v[i] == b) return i; return 0; }
 
 static int bat_percent(int mv)         /* a Li-ion cell at rest: 4.15 V full, 3.30 V empty */
 {
@@ -276,9 +279,8 @@ static void draw_play_top(int force)
 /* ---- chain tiles: position i shows block PRESET.order[i] ---- */
 static uint32_t tile_x(int i) { return 4u + (uint32_t)(i % T_COLS) * T_PITCH; }
 static uint32_t tile_y(int i) { return T_Y0 + (uint32_t)(i / T_COLS) * T_DY; }
-static void draw_tile(int i)
+static void draw_tile(int i, int b)
 {
-    int b = PRESET.order[i];
     uint32_t x = tile_x(i), y = tile_y(i);
     int on = PRESET.on[b] != 0, sel = (b == (int)ui_blk), mv = sel && ui_mode == M_MOVE;
     uint16_t bg = mv ? UI_ACC : (on ? BLK_COL[b] : C_OFF), fg = (on || mv) ? BLK : ft_mix(BLK_COL[b], C_OFF, 11);   /* (an off label: the block's colour at 11/15, contrast 2.6 to 7.2) */
@@ -289,10 +291,16 @@ static void draw_tile(int i)
 }
 static void draw_tiles(int force)
 {
+    uint8_t v[PX_NBLK];
     ui_order_fix();
+    const int n = ui_vis(v);
     for (int i = 0; i < PX_NBLK; i++) {
-        int b = PRESET.order[i], on = PRESET.on[b] != 0, sel = (b == (int)ui_blk), mv = sel && ui_mode == M_MOVE;
-        if (force || uc.tile_blk[i] != b || uc.tile_on[i] != on || uc.tile_sel[i] != sel || uc.tile_mv[i] != mv) draw_tile(i);
+        if (i >= n) {                                  /* (OpenPocket Bass: fewer blocks, the rest of the grid empty) */
+            if (force || uc.tile_blk[i] != 0xFFu) { ui_rbox(tile_x(i) - 2u, tile_y(i) - 2u, T_W + 4u, T_H + 4u, 5, UI_BG, UI_BG); uc.tile_blk[i] = 0xFFu; }
+            continue;
+        }
+        int b = v[i], on = PRESET.on[b] != 0, sel = (b == (int)ui_blk), mv = sel && ui_mode == M_MOVE;
+        if (force || uc.tile_blk[i] != b || uc.tile_on[i] != on || uc.tile_sel[i] != sel || uc.tile_mv[i] != mv) draw_tile(i, b);
     }
 }
 static void draw_info(int force)       /* the selected block: label, model (v42: a NAM amp's model, a user IR's name), on/off */
@@ -480,6 +488,7 @@ static void ui_render(void)
 /* ---- actions ---- */
 static void ui_enter_block(uint32_t b)
 {
+    if (!px_block_used((int)b)) return;               /* (OpenPocket Bass: a block taken out has no page) */
     if (ui_blk == b && UI_PAGE) PRESET.on[b] ^= 1u;   /* 2nd press on the same button: on/off */
     ui_blk = b; ui_mode = M_BLOCK; ui_item = 0;
 }
@@ -495,11 +504,17 @@ static void ui_move_cancel(void) { for (int i = 0; i < PX_NBLK; i++) PRESET.orde
 static void ui_knob(int dd, int fast)
 {
     if (ui_mode == M_CHAIN) {                          /* along the chain, in the preset's order */
+        uint8_t v[PX_NBLK];
         ui_order_fix();
-        ui_blk = PRESET.order[(ui_pos_of(ui_blk) + PX_NBLK + dd) % PX_NBLK];
-    } else if (ui_mode == M_MOVE) {                    /* the grabbed block swaps with its neighbour */
-        int i = ui_pos_of(ui_blk), j = i + (dd > 0 ? 1 : -1);
-        if (j >= 0 && j < PX_NBLK) { uint8_t t = PRESET.order[i]; PRESET.order[i] = PRESET.order[j]; PRESET.order[j] = t; }
+        const int n = ui_vis(v);
+        ui_blk = v[(ui_vpos_of(v, n, ui_blk) + n + dd) % n];
+    } else if (ui_mode == M_MOVE) {                    /* the grabbed block swaps with its neighbour (a shown one) */
+        uint8_t v[PX_NBLK];
+        const int n = ui_vis(v), k = ui_vpos_of(v, n, ui_blk) + (dd > 0 ? 1 : -1);
+        if (k >= 0 && k < n) {
+            int i = ui_pos_of(ui_blk), j = ui_pos_of(v[k]);
+            uint8_t t = PRESET.order[i]; PRESET.order[i] = PRESET.order[j]; PRESET.order[j] = t;
+        }
     } else if (ui_mode == M_BLOCK) {                   /* v42: in the order drawn: ON (item 1) at the top, MODEL, the settings */
         int n = ui_nitems(), p = ui_item < 2u ? 1 - (int)ui_item : (int)ui_item;
         p = (p + n + dd) % n;
@@ -714,7 +729,7 @@ static void ui_preset_step(int dd)
 }
 /* the FX button's blocks (the FX light follows them: px_lights.h) */
 static const uint8_t UI_FXB[7] = {PX_B_DRIVE, PX_B_SFX, PX_B_SYN, PX_B_PITCH, PX_B_COMP, PX_B_GATE, PX_B_EQ};
-static int ui_is_fx(uint32_t b) { for (int i = 0; i < 7; i++) if (UI_FXB[i] == b) return 1; return 0; }
+static int ui_is_fx(uint32_t b) { for (int i = 0; i < 7; i++) if (UI_FXB[i] == b) return px_block_used((int)b); return 0; }
 static void ui_fx_cycle(void)          /* FX: the next of its blocks along the preset's chain, as the tiles read (v42), else the first */
 {
     ui_order_fix();
@@ -1037,7 +1052,11 @@ static struct {
 } ug = {.fs = -1};
 static void ui_action(int a)
 {
+#if PX_BASS
+    static const uint8_t BLK_OF[5] = {PX_B_EQ, PX_B_AMP, PX_B_CAB, PX_B_PITCH, PX_B_COMP};   /* MOD: EQ, DLY: OCTAVE, REV: COMP */
+#else
     static const uint8_t BLK_OF[5] = {PX_B_MOD, PX_B_AMP, PX_B_CAB, PX_B_DELAY, PX_B_REVERB};
+#endif
     switch (ui_mode) {
     case M_SAVE: if (a == UB_PUSH) save_confirm(); else if (a == UB_HOME) save_close(); return;
     case M_MIDI: if (a == UB_PUSH) midi_push(); else if (a == UB_HOME) midi_close(); return;

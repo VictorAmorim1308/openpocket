@@ -34,6 +34,7 @@ static uint8_t lit(void) { return enabled() ? (uint8_t)~q : 0u; }   /* what the 
 #define LEDS_PC(r) (pc[(r) / 4u])
 #define LEDS_WAIT() (waits++)
 #define LEDS_EDGE() edge()
+int px_block_used(int b) { return b >= 0 && b < PX_NBLK; }   /* (engine/px_dsp.c; the guitar build here) */
 #include "px_lights.h"
 
 static int failed;

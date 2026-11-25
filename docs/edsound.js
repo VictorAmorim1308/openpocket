@@ -53,7 +53,9 @@ async function sendOrder(order) {
 }
 function moveBlock(b, d) {
   if (comparing()) return;
-  const o = [...app.st.preset.order], i = o.indexOf(b), j = i + d;
+  const o = [...app.st.preset.order], i = o.indexOf(b);
+  let j = i + d;
+  while (j >= 0 && j < o.length && blk(o[j]).used === false) j += d;   // (OpenPocket Bass: past the blocks not shown)
   if (j < 0 || j >= o.length) return;
   [o[i], o[j]] = [o[j], o[i]];
   sendOrder(o).then(() => document.querySelector(`.tile[data-b="${b}"] .tsel`)?.focus());
@@ -85,10 +87,11 @@ function renderHeader() {
 function renderTiles() {
   const box = $("tiles"), p = app.st.preset, had = box.contains(document.activeElement);
   box.textContent = "";
-  p.order.forEach((b, i) => {
+  const shown = p.order.filter((b) => blk(b).used !== false);   // OpenPocket Bass: the blocks taken out are not shown
+  shown.forEach((b, i) => {
     const B = blk(b), is = !!p.on[b], sel = b === app.focus;
     const tsel = h("button", { type: "button", class: "tsel", tabIndex: sel ? 0 : -1, "aria-pressed": sel ? "true" : "false",
-      "aria-label": `${B.name}, ${typeOf(p, b).name}, ${is ? "on" : "off"}, ${i + 1} of ${p.order.length}`, "aria-keyshortcuts": "Space Alt+ArrowLeft Alt+ArrowRight" },
+      "aria-label": `${B.name}, ${typeOf(p, b).name}, ${is ? "on" : "off"}, ${i + 1} of ${shown.length}`, "aria-keyshortcuts": "Space Alt+ArrowLeft Alt+ArrowRight" },
       h("span", { class: "tl", text: B.label }), h("span", { class: "tt", text: typeOf(p, b).name }));
     const pw = h("button", { type: "button", class: "pw", tabIndex: -1, role: "switch", "aria-checked": is ? "true" : "false", "aria-label": `${B.name} ${is ? "on" : "off"}` },
       h("i"), h("span", { text: is ? "ON" : "OFF" }));
@@ -98,7 +101,7 @@ function renderTiles() {
     tsel.onkeydown = (e) => {
       const d = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0;
       if (d && e.altKey) { e.preventDefault(); moveBlock(b, d); }
-      else if (d) { e.preventDefault(); const n = p.order[i + d]; if (n !== undefined) { setFocus(n); document.querySelector(`.tile[data-b="${n}"] .tsel`)?.focus(); } }
+      else if (d) { e.preventDefault(); const n = shown[i + d]; if (n !== undefined) { setFocus(n); document.querySelector(`.tile[data-b="${n}"] .tsel`)?.focus(); } }
       else if (e.key === " ") { e.preventDefault(); toggle(b); }
       else if (e.key === "Enter") { e.preventDefault(); $("type").focus(); }
     };
@@ -138,7 +141,7 @@ function startDrag(e, el, b) {
     place(ev);
     // the tile under the pointer: the dragged block takes its place
     let best = -1, bd = 1e9;
-    [...$("tiles").children].forEach((t, i) => { const r = t.getBoundingClientRect(); const d = Math.hypot(ev.clientX - (r.left + r.width / 2), ev.clientY - (r.top + r.height / 2)); if (d < bd) { bd = d; best = i; } });
+    [...$("tiles").children].forEach((t) => { const r = t.getBoundingClientRect(); const d = Math.hypot(ev.clientX - (r.left + r.width / 2), ev.clientY - (r.top + r.height / 2)); if (d < bd) { bd = d; best = order.indexOf(Number(t.dataset.b)); } });
     const cur = order.indexOf(b);
     if (best >= 0 && best !== cur) { order.splice(cur, 1); order.splice(best, 0, b); app.st.preset.order = [...order]; renderTiles(); }
   };
