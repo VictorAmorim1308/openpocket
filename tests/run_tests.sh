@@ -109,6 +109,7 @@ node tests/test_op.mjs
 echo "== rescue tool (tools/uboot_rescue.py on a simulated UBOOT pedal)"
 python3 tests/test_uboot_rescue.py $1
 echo "== hosted simulator (tools/sim.mjs)"
+export OP_BASS=0   # (its tests are written for the guitar build; node tools/op.mjs sim runs the bass one)
 node tests/test_sim.mjs
 echo "== Bluetooth test image sources (third_party/jieli-ble)"
 node tests/test_ble_sources.mjs

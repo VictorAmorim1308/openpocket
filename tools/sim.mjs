@@ -31,13 +31,16 @@ function newest(dirs) {
   }
   return t;
 }
+// OpenPocket Bass: the pedal as the firmware builds it (PX_BASS: the bass chain, presets and PLAY screen); OP_BASS=0: the
+// guitar one (the tests of the upstream screens)
+const BASS = process.env.OP_BASS === "0" ? "0" : "1";
 function compile(kind) {
-  const bin = join(BIN, kind === "pedal" ? "edsim" : "devsim");
+  const bin = join(BIN, kind === "pedal" ? (BASS === "1" ? "edsim_bass" : "edsim") : "devsim");
   mkdirSync(BIN, { recursive: true });
   const stale = !existsSync(bin) || statSync(bin).mtimeMs < newest(["tests", "engine", "firmware", "firmware/bsp/chip", "loader"]);
   if (!stale) return bin;
   const p = PROGRAMS[kind];
-  const r = spawnSync(process.env.CC || "cc", ["-O1", "-Wall", "-Wno-unused-function", "-o", bin, ...p.src, ...p.libs], { cwd: ROOT, stdio: "inherit" });
+  const r = spawnSync(process.env.CC || "cc", ["-O1", "-Wall", "-Wno-unused-function", ...(kind === "pedal" ? [`-DPX_BASS=${BASS}`] : []), "-o", bin, ...p.src, ...p.libs], { cwd: ROOT, stdio: "inherit" });
   if (r.error || r.status !== 0) {
     throw new Error(r.error ? `no C compiler (${r.error.message}): install one (Xcode command line tools, build-essential) or set CC` : "the simulator did not compile");
   }
