@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // OpenPocket — cabinet impulse responses for the pedal (v38): read a WAV file (PCM 16 / 24 / 32-bit or float, any rate,
-// mono or stereo), bring it to 44.1 kHz, keep the first 1024 samples (23 ms) from its onset with a short fade at the end,
-// and pack it for a user slot (firmware/px_irs.h: a 64-byte header, then 1024 16-bit samples). The pedal sets the
+// mono or stereo), bring it to 44.1 kHz, keep the first 2000 samples (45 ms; OpenPocket Bass, was 1024) from its onset with a short fade at the end,
+// and pack it for a user slot (firmware/px_irs.h: a 64-byte header, then 2000 16-bit samples, version 2). The pedal sets the
 // level itself (every IR at the same loudness as the modelled cabinets).
 
 import { crc16 } from "./pxnam.js";
 
-export const IR_LEN = 1024;
+export const IR_LEN = 2000;          // firmware: PX_IR_TAPS (engine/px_dsp.h)
 export const IR_SR = 44100;
 export const IR_BYTES = 64 + IR_LEN * 2;
 export const IR_CHUNK = 112;          // bytes per IR_WRITE (firmware/px_irs.h IR_CHUNK)
@@ -68,7 +68,7 @@ export function resample(x, sr, count = IR_LEN) {
   return out;
 }
 
-// a parsed WAV -> { h: Float32Array(1024) at 44.1 kHz, note }: from its onset (a pre-delay of silence dropped), faded out
+// a parsed WAV -> { h: Float32Array(IR_LEN) at 44.1 kHz, note }: from its onset (a pre-delay of silence dropped), faded out
 // over its last 64 samples when the response is longer
 export function prepareIr(w) {
   const { x, sampleRate: sr } = w;
@@ -85,12 +85,12 @@ export function prepareIr(w) {
   const ms = (src.length / sr * 1000).toFixed(0);
   const notes = [];
   if (sr !== IR_SR) notes.push(`resampled from ${sr / 1000} kHz`);
-  if (longer) notes.push(`its first 23 ms kept (of ${ms} ms)`);
+  if (longer) notes.push(`its first ${Math.round(IR_LEN / IR_SR * 1000)} ms kept (of ${ms} ms)`);
   if (w.channels > 1) notes.push("its left channel used");
   return { h, note: notes.join(", ") };
 }
 
-// a user slot's bytes (firmware/px_irs.h ir_hdr_t + 1024 int16, little endian)
+// a user slot's bytes (firmware/px_irs.h ir_hdr_t + IR_LEN int16, little endian)
 export function packIr(name, h) {
   const out = new Uint8Array(IR_BYTES), v = new DataView(out.buffer);
   let peak = 0;
@@ -98,7 +98,7 @@ export function packIr(name, h) {
   const scale = peak > 0 ? peak : 1;
   for (let i = 0; i < IR_LEN; i++) v.setInt16(64 + 2 * i, Math.max(-32767, Math.min(32767, Math.round(h[i] / scale * 32767))), true);
   v.setUint32(0, 0x5249504F, true);           // "OPIR"
-  v.setUint16(4, 1, true);
+  v.setUint16(4, 2, true);
   v.setUint16(6, IR_LEN, true);
   const nm = name.toUpperCase().replace(/[^ -~]/g, "?").slice(0, 11);
   for (let i = 0; i < nm.length; i++) out[8 + i] = nm.charCodeAt(i);

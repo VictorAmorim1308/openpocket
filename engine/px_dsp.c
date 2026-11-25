@@ -1563,9 +1563,9 @@ static void cab_make(float sr, const px_preset_t *p, cab_set *o)
  * The IR's PX_IR_LEN taps in IR_P partitions of IR_B (= the engine's 64-frame block). Each partition's spectrum is kept
  * (real FFT of 128: the partition, then 64 zeros); every block the last two blocks of input are transformed (overlap-
  * save), the spectra of the last IR_P input blocks are multiplied with the partitions' and summed, and the last 64
- * samples of the inverse transform are the output: no latency. A block: 2 FFTs of 128 and 16 x 65 complex multiply-adds
- * (about 420 instructions a sample on the pedal).
- * One IR at a time: its memory is here (like the NAM network's), 17 KB. */
+ * samples of the inverse transform are the output: no latency. A block: 2 FFTs of 128 and IR_P x 65 complex multiply-adds
+ * (about 420 instructions a sample on the pedal at 16 partitions; OpenPocket Bass: 32, about 650).
+ * One IR at a time: its memory is here (like the NAM network's), 33 KB at 2048 taps. */
 #define IR_B 64
 #define IR_F 128
 #define IR_P (PX_IR_LEN / IR_B)

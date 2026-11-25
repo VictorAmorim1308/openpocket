@@ -491,7 +491,7 @@ const free = (kind, slot) => page.locator(`#${kind}list .free [data-slot="${slot
   const [ch] = await Promise.all([page.waitForEvent("filechooser"), free("ir", 2).click()]);
   await ch.setFiles(fw);
   ok(await toast(/1 IR on the pedal/, 20000), "a WAV file loaded into IR slot 3 from its own row");
-  ok((await srow("ir", 2).textContent()).includes("GREEN 412") && /1 of 8 slots used/.test(await text("#ircap")) && /resampled from 48 kHz/.test(await text("#ir .queue")), "IR3 GREEN 412, with what was done to the file");
+  ok((await srow("ir", 2).textContent()).includes("GREEN 412") && /1 of 20 slots used/.test(await text("#ircap")) && /resampled from 48 kHz/.test(await text("#ir .queue")), "IR3 GREEN 412, with what was done to the file");
   ok((await pedalState()).writesOk, "the flash was written only inside the preset store, the model slots and the IR slots");
 }
 

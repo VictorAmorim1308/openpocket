@@ -45,6 +45,7 @@ function sim(args) {
   return {
     access, ready, lines,
     pedal: (l) => child.stdin.write(`#pedal ${l}\n`),
+    raw: (l) => child.stdin.write(`${l}\n`),
     dump: async () => { lines.length = 0; child.stdin.write("#dump\n"); for (let i = 0; i < 50 && !lines.length; i++) await sleep(10); return lines[0] || ""; },
     end: () => { child.stdin.end(); return done; },
   };
@@ -220,8 +221,8 @@ list = await ed.list();
   const w48 = parseWav(wav(48000, 24, 2, resp(48000, 200)));
   ok(w48.sampleRate === 48000 && w48.channels === 2 && w48.bits === 24 && w48.x.length === 9600, "IR: a 24-bit stereo WAV at 48 kHz is read");
   const ir = prepareIr(w48);
-  ok(ir.h.length === IR_LEN && Math.abs(ir.h[0]) > 0 && /48 kHz/.test(ir.note) && /23 ms/.test(ir.note) && Math.abs(ir.h[IR_LEN - 1]) < 1e-3,
-     `IR: from its onset, at 44.1 kHz, 1024 samples, faded (${ir.note})`);
+  ok(ir.h.length === IR_LEN && Math.abs(ir.h[0]) > 0 && /48 kHz/.test(ir.note) && /45 ms/.test(ir.note) && Math.abs(ir.h[IR_LEN - 1]) < 1e-3,
+     `IR: from its onset, at 44.1 kHz, ${IR_LEN} samples, faded (${ir.note})`);
   const sine = Array.from({ length: 4800 }, (_, i) => Math.sin(2 * Math.PI * 1000 * i / 48000));
   const rs = resample(sine, 48000, 1000), errs = rs.slice(100, 900).map((v, i) => v - Math.sin(2 * Math.PI * 1000 * (i + 100) / 44100));
   ok(Math.max(...errs.map(Math.abs)) < 1e-3, "IR: the resampling keeps a 1 kHz tone (error below -60 dB)");
@@ -235,6 +236,15 @@ list = await ed.list();
   const rc = await ed.irUpload(2, packIr(name, ir.h));
   il = await ed.irList();
   ok(rc === 0 && name === "MESA 4X12 V" && il[2].used && il[2].name === name, `IR: written into slot 3 (${il[2].name})`);
+  {   // OpenPocket Bass: 2000 samples in the 4 KiB sector, around the update loader's bytes 0xF00..0xF07 (left erased)
+    const fp = join(TMP, "irflash.bin");
+    s.lines.length = 0; s.raw(`#flash ${fp}`);
+    for (let i = 0; i < 100 && !s.lines.some((l) => l.startsWith("#flash")); i++) await sleep(10);
+    const fl = readFileSync(fp), base = 0xF4000 + 2 * 0x1000, rec = packIr(name, ir.h);
+    const flat = Buffer.concat([fl.subarray(base, base + 0xF00), fl.subarray(base + 0xF08, base + 0xF08 + rec.length - 0xF00)]);
+    ok(fl.subarray(base + 0xF00, base + 0xF08).every((b) => b === 0xff) && flat.equals(Buffer.from(rec)) && rec.length === 64 + 2 * IR_LEN,
+       "IR: 2000 samples in the slot, the update loader's 8 bytes at 0xF00 left erased");
+  }
   await ed.catalog();
   const cabB = cat.blocks.findIndex((b) => b.label === "CAB"), it = cat.blocks[cabB].types.findIndex((t) => t.name === "USER IR");
   await ed.irTexts();

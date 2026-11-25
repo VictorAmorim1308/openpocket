@@ -54,10 +54,13 @@ enum { PX_AMP_TWIN, PX_AMP_AC15, PX_AMP_JCM900, PX_AMP_JCM2000, PX_AMP_MARK4, PX
 enum { PX_CAB_112JN, PX_CAB_212BLUE, PX_CAB_412GB, PX_CAB_412T75, PX_CAB_412V30, PX_CAB_112CREAM, PX_CAB_DI,
        PX_CAB_IR, PX_CAB_COUNT };      /* v38: USER IR, a cabinet impulse response loaded from the editor */
 /* v38: user cabinet IRs. PX_IR_N slots (the firmware keeps them in flash: firmware/px_irs.h); the engine plays the first
- * PX_IR_LEN taps (23 ms at 44.1 kHz) by uniform partitioned FFT convolution, 64-frame partitions. Its settings: IR (the
+ * PX_IR_LEN taps (46 ms at 44.1 kHz) by uniform partitioned FFT convolution, 64-frame partitions. Its settings: IR (the
  * slot), LOW CUT, HIGH CUT. */
 #define PX_IR_N   20                     /* OpenPocket Bass: 20 (was 8; firmware/px_irs.h ir_addr) */
-#define PX_IR_LEN 1024
+/* OpenPocket Bass: 2048 (46 ms: the cabinet's low end in full; was 1024, 23 ms). The slots keep PX_IR_TAPS of them (a
+ * 4 KiB flash sector minus the header and the update loader's record gap); the rest are zeros. */
+#define PX_IR_LEN 2048
+#define PX_IR_TAPS 2000
 enum { PX_SYN_ORGAN, PX_SYN_CHURCH, PX_SYN_STRINGS, PX_SYN_CHOIR, PX_SYN_MONO, PX_SYN_PWM, PX_SYN_BASS,
        PX_SYN_12STR, PX_SYN_ACOUSTIC, PX_SYN_SITAR, PX_SYN_BARI, PX_SYN_COUNT };
 enum { PX_EQ_5BAND, PX_EQ_GEQ, PX_EQ_PARAM, PX_EQ_BASS, PX_EQ_COUNT };   /* BASS PEQ: OpenPocket Bass */
