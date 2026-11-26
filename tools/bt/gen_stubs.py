@@ -19,11 +19,11 @@ for f in files:
     for l in subprocess.run([f"llvm-nm{V}", f], capture_output=True, text=True).stdout.splitlines():
         p = l.split()
         if len(p) < 2: continue
-        (undef if p[-2] == "U" else defs if p[-2] in "TDBRCVW" else set()).add(p[-1])
+        (undef if p[-2] in "Uw" else defs if p[-2] in "TDBRCVW" else set()).add(p[-1])   # (w: a weak reference, called all the same)
     ir = subprocess.run([f"llvm-dis{V}", f, "-o", "-"], capture_output=True, text=True).stdout
     for m in re.finditer(r"^@(\S+) = external (?:dso_local )?(?:local_unnamed_addr )?(global|constant) (.+?)(?:, align (\d+))?$", ir, re.M):
         decl[m.group(1)] = ("data", m.group(2), m.group(3), int(m.group(4) or 4))
-    for m in re.finditer(r"^declare .*? @([\w.$]+)\(", ir, re.M):
+    for m in re.finditer(r"^declare .*?@([\w.$]+)\(", ir, re.M):
         decl.setdefault(m.group(1), ("func",))
 need = undef - defs - LDDEF
 # the firmware's own definitions (this image, without the generated file)
