@@ -92,3 +92,9 @@ tirados. Os botões MOD, DLY e REV abrem o EQ, a oitava e o compressor.
 Na tela principal, o knob para no **VOL** (ao lado do nome) antes do primeiro pedal. Com ele marcado, o PUSH entra no
 ajuste (fica laranja), o knob muda o volume do preset (0,3 dB por passo, de −15 a +15 dB) e o PUSH confirma. Segure o
 PUSH pra salvar no preset. O knob MASTER continua sendo o volume geral.
+
+## Renomear o preset na pedaleira
+
+Segure o **PUSH** (página SAVE) e aperte **FX**: abre o nome. O knob anda pelas 13 letras e pelo OK; o PUSH numa letra
+deixa trocar (o knob muda a letra, o PUSH confirma); o PUSH no OK volta pro SAVE com o nome novo; o HOME cancela. Depois
+o PUSH no SAVE grava o preset com o nome.

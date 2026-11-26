@@ -143,8 +143,8 @@ int main(void)
         }
         CHECK(!memcmp(ref, got, sizeof(float) * FR * (NB - 1)), "MIX 50: the pipeline = the plain engine, one block later");
         /* NAM: LEVEL 0 is -12 dB, 25 -6 dB (above 50 this loud test signal meets the output's soft clipper) */
-        CHECK(!strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 1), "GAIN") && !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 3), "MID") &&
-              !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 4), "TREBLE"), "NAM: MODEL, GAIN, BASS, MID, TREBLE (and LEVEL in the SFX block's 1st)");
+        CHECK(!strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 1), "GAIN") && !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 3), "MID 600 HZ") &&
+              !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 4), "TREBLE 2.5 KHZ"), "NAM: MODEL, GAIN, BASS, MID, TREBLE (and LEVEL in the SFX block's 1st)");
         double lv[3];
         for (int j = 0; j < 3; j++) {
             bass_preset(&pm, 0, 0, 1); pm.on[PX_B_CAB] = 0; pm.p[PX_AMP_LVL_B][PX_AMP_LVL_K] = (uint8_t)(j * 25);

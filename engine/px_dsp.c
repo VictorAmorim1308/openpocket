@@ -503,9 +503,10 @@ static const cab_v CV[PX_CAB_COUNT] = {
 /* ================================================================== EQ ===== */
 static const char *const PN_EQ5[] = {"100 HZ", "400 HZ", "1 KHZ", "2.5 KHZ", "6 KHZ"};
 static const char *const PN_GEQ[] = {"80 HZ", "240 HZ", "750 HZ", "2.2 KHZ", "6.6 KHZ"};
-static const char *const PN_PEQ[] = {"LOW", "MID FREQ", "MID GAIN", "MID Q", "HIGH"};
+static const char *const PN_PEQ[] = {"LOW 100 HZ", "MID FREQ", "MID GAIN", "MID Q", "HIGH 5 KHZ"};   /* (the shelves' corners) */
+static const char *const PN_BPEQ[] = {"LOW 80 HZ", "MID FREQ", "MID GAIN", "MID Q", "HIGH 3.5 KHZ"};
 static const tdef T_EQ[PX_EQ_COUNT] = {{"5 BAND", 5, PN_EQ5}, {"GRAPHIC 5", 5, PN_GEQ}, {"PARAMETRIC", 5, PN_PEQ},
-    {"BASS PEQ", 5, PN_PEQ}};   /* OpenPocket Bass: low shelf 80 Hz, mid 40 Hz..4 kHz, high shelf 3.5 kHz */
+    {"BASS PEQ", 5, PN_BPEQ}};   /* OpenPocket Bass: low shelf 80 Hz, mid 40 Hz..4 kHz, high shelf 3.5 kHz */
 
 /* ========================================================== modulation ===== */
 static const char *const PN_RDM[] = {"RATE", "DEPTH", "MIX"};
@@ -548,7 +549,11 @@ static const tdef T_REV[PX_REV_COUNT] = {
 static const char *const PN_AMP[] = {"GAIN", "BASS", "MID", "TREBLE", "PRESENCE"};
 /* (OpenPocket Bass: GAIN drives the capture, half of its level change taken back; the amp's LEVEL is a 6th setting, kept
  * in the SFX block's first, a block the bass chain does not use: px_dsp.h PX_AMP_LVL_B) */
+#if PX_BASS
+static const char *const PN_NAM[] = {"MODEL", "GAIN", "BASS 120 HZ", "MID 600 HZ", "TREBLE 2.5 KHZ"};   /* (where each acts) */
+#else
 static const char *const PN_NAM[] = {"MODEL", "GAIN", "BASS", "MID", "TREBLE"};
+#endif
 static const char *const PN_CAB[] = {"BODY", "BRIGHT", "MIC"};
 #if PX_BASS
 /* OpenPocket Bass: MIX doses the cabinet alone: the amp's output without the IR against it through the IR (0: no IR);
@@ -717,7 +722,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
             buf[8] = 0;
             return 1;
         }
-        if (t == PX_AMP_NAM && k == 1) { float db = (x - 0.5f) * 24.0f; put_int(buf, (int)(db + (db >= 0 ? 0.5f : -0.5f)), 1); return 1; }
+        if (t == PX_AMP_NAM && k == 1 && !PX_BASS) { float db = (x - 0.5f) * 24.0f; put_int(buf, (int)(db + (db >= 0 ? 0.5f : -0.5f)), 1); return 1; }   /* (Bass: GAIN 0..100) */
         break;
     case PX_B_PITCH:
         if (t == PX_PIT_HARMONY && k == 0) { put_str(buf, HARM_TXT[harm_idx(v)]); return 1; }

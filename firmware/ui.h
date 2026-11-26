@@ -25,13 +25,14 @@
  */
 #pragma once
 
-enum { M_CHAIN, M_BLOCK, M_EDIT, M_TUNER, M_SAVE, M_MOVE, M_MIDI, M_LIST, M_DIAG, M_PVOL };   /* M_PVOL: the preset's volume, on PLAY (Bass) */
+enum { M_CHAIN, M_BLOCK, M_EDIT, M_TUNER, M_SAVE, M_MOVE, M_MIDI, M_LIST, M_DIAG, M_PVOL, M_NAME };   /* M_NAME: renaming (Bass) */   /* M_PVOL: the preset's volume, on PLAY (Bass) */
 static uint32_t st_gen;                 /* bumped on each save: the "EDITED" reference reloads */
 static void st_get(uint32_t k, px_preset_t *p);
 static int st_save(uint32_t k, const px_preset_t *p);
 static int st_reset(uint32_t k);
 static int st_saved(uint32_t k);
 static void save_draw(void);
+static void name_draw(void);
 static void midi_draw(void);
 static void list_draw(void);
 static uint32_t ui_mode = M_CHAIN, ui_blk = PX_B_AMP, ui_item = 0;
@@ -215,7 +216,7 @@ static int ui_load_kind(uint32_t l, int safe, int bypass, int late, int loading)
 }
 static void ui_status(const char *s, int kind)
 {
-    if (ui_mode == M_TUNER || ui_mode == M_SAVE || ui_mode == M_MIDI || ui_mode == M_LIST || ui_mode == M_DIAG) return;
+    if (ui_mode == M_TUNER || ui_mode == M_SAVE || ui_mode == M_MIDI || ui_mode == M_LIST || ui_mode == M_DIAG || ui_mode == M_NAME) return;
     int same = uc.status_kind == kind;
     for (int i = 0; i < 12; i++) { if (uc.status[i] != s[i]) same = 0; if (!s[i]) break; }
     if (same && !uc.full) return;
@@ -628,6 +629,7 @@ static void ui_render(void)
     ui_fix_types();
     if (ui_mode == M_TUNER || ui_mode == M_DIAG) return;   /* (the main loop draws them every 100 ms: tuner_draw, diag_draw) */
     if (ui_mode == M_SAVE) { save_draw(); return; }
+    if (ui_mode == M_NAME) { name_draw(); return; }
     if (ui_mode == M_MIDI) { midi_draw(); return; }
     if (ui_mode == M_LIST) { list_draw(); return; }
     int scr = UI_PAGE ? 1 : 0;
@@ -760,9 +762,9 @@ static void ui_home(void) { if (ui_mode == M_MOVE) ui_move_cancel(); ui_mode = M
  * HOME cancels. Saving to another slot copies the sound there and moves to it. */
 #define SV_FACTORY 52u
 static uint32_t sv_dest, sv_shown = ~0u;
-static void save_open(void)
+static void save_page(void)            /* the SAVE page drawn, its slot kept (back from NAME) */
 {
-    ui_mode = M_SAVE; sv_dest = cur_preset; sv_shown = ~0u;
+    ui_mode = M_SAVE; sv_shown = ~0u;
     lcd_rect(0, 0, 240, 240, UI_BG);
     lcd_rect(0, 0, 240, 4, UI_ACC); lcd_rect(0, 27, 240, 3, UI_ACC); lcd_rect(0, 4, 8, 23, UI_ACC);
     ft_box(8, 4, 232, "SAVE PRESET", &FT_MD, BLK, UI_ACC, 0);
@@ -770,6 +772,7 @@ static void save_open(void)
     lcd_rect(20, 70, 200, 1, C_LINE);
     lcd_rect(0, F_Y, 240, 240u - F_Y, UI_PANEL);
 }
+static void save_open(void) { sv_dest = cur_preset; save_page(); }
 static void save_draw(void)
 {
     if (sv_shown == sv_dest) return;
@@ -777,8 +780,7 @@ static void save_draw(void)
     char b[20];
     int restore = sv_dest == SV_FACTORY, can = !restore || st_saved(cur_preset);   /* (v42: nothing to restore: PUSH does nothing) */
     ft_box(0, F_Y + 3u, 240, !can ? "KNOB: SLOT   HOME: NO" : restore ? "PUSH: RESTORE   HOME: NO" : "KNOB: SLOT  PUSH: SAVE  HOME: NO", &FT_SM, UI_DIM, UI_PANEL, 1);
-    /* v42: the pedal cannot rename: a copy keeps the name (the web editor renames) */
-    ft_box(0, 186, 240, restore || sv_dest == cur_preset ? "" : "NAME STAYS: RENAME IN THE EDITOR", &FT_SM, UI_DIM, UI_BG, 1);
+    ft_box(0, 186, 240, restore ? "" : "FX: RENAME", &FT_SM, UI_DIM, UI_BG, 1);   /* (OpenPocket Bass: the pedal renames) */
     if (restore) {
         ft_box(0, 82, 240, "", &FT_XL, UI_ACC, UI_BG, 1);
         ft_box(0, 132, 240, "RESTORE FACTORY", &FT_MD, UI_TXT, UI_BG, 1);
@@ -822,6 +824,87 @@ static void save_confirm(void)
     for (int i = 0; i < 7; i++) { fm1_wdt_feed(); fm1_delay_ms(100); }
     save_close();
 }
+/* ===================================================== NAME page ======== */
+/* OpenPocket Bass: FX on the SAVE page renames the preset on the pedal. KNOB moves along the 13 letters and OK; PUSH on a
+ * letter picks it (the KNOB then changes it, PUSH again keeps it); PUSH on OK takes the name back to SAVE; HOME leaves it
+ * as it was. The name is saved with the preset (PUSH on SAVE). */
+#define NM_LEN 13
+static const char NM_SET[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-+&#/.!";
+static char nm_old[14];
+static int nm_at, nm_ed, nm_drawn;
+static int nm_idx(char c) { for (int i = 0; NM_SET[i]; i++) if (NM_SET[i] == c) return i; return 0; }
+static void name_open(void)
+{
+    ui_mode = M_NAME; nm_at = 0; nm_ed = 0; nm_drawn = 0;
+    for (int i = 0; i < 14; i++) nm_old[i] = PRESET.name[i];
+    for (int i = 0; i < NM_LEN; i++) {                 /* letters the set has not (lower case...) become theirs or a space */
+        char c = PRESET.name[i];
+        if (c >= 'a' && c <= 'z') c = (char)(c - 32);
+        if (!c) { for (int j = i; j < NM_LEN; j++) PRESET.name[j] = ' '; break; }
+        PRESET.name[i] = NM_SET[nm_idx(c)];
+    }
+    PRESET.name[NM_LEN] = 0;
+    lcd_rect(0, 0, 240, 240, UI_BG);
+    lcd_rect(0, 0, 240, 4, UI_ACC); lcd_rect(0, 27, 240, 3, UI_ACC); lcd_rect(0, 4, 8, 23, UI_ACC);
+    ft_box(8, 4, 232, "PRESET NAME", &FT_MD, BLK, UI_ACC, 0);
+    lcd_rect(0, F_Y, 240, 240u - F_Y, UI_PANEL);
+}
+static void name_draw(void)
+{
+    static int last_at = -1, last_ed = -1;
+    static char last[14];
+    const int full = !nm_drawn;
+    for (int i = 0; i < NM_LEN; i++) {                 /* 13 cells of 17 px */
+        const int sel = i == nm_at, was = i == last_at;
+        if (!full && last[i] == PRESET.name[i] && sel == was && (!sel || nm_ed == last_ed)) continue;
+        const uint32_t x = 9u + (uint32_t)i * 17u;
+        const uint16_t bg = sel ? (nm_ed ? UI_ACC : C_CARD) : UI_BG;
+        char c[2] = {PRESET.name[i], 0};
+        ui_rbox(x, 86, 16, 26, 3, bg, UI_BG);
+        ft_box(x + 1u, 91, 14, c[0] == ' ' ? "" : c, &FT_SM, sel && nm_ed ? BLK : UI_TXT, bg, 1);
+        lcd_rect(x + 2u, 115, 12, 2, sel ? (nm_ed ? UI_ACC : WHT) : (c[0] == ' ' ? C_LINE : UI_BG));
+    }
+    int chg = full;                                    /* the whole name, as PLAY shows it */
+    for (int i = 0; i < 14; i++) if (last[i] != PRESET.name[i]) chg = 1;
+    if (chg) ft_box(0, 44, 240, PRESET.name, &FT_MD, UI_TXT, UI_BG, 1);
+    if (full || (nm_at == NM_LEN) != (last_at == NM_LEN)) {
+        const int sel = nm_at == NM_LEN;
+        ui_rbox(80, 140, 80, 34, 6, sel ? UI_ACC : C_CARD, UI_BG);
+        ft_box(84, 145, 72, "OK", &FT_MD, sel ? BLK : UI_TXT, sel ? UI_ACC : C_CARD, 1);
+    }
+    if (full || nm_ed != last_ed || (nm_at == NM_LEN) != (last_at == NM_LEN))
+        ft_box(0, F_Y + 3u, 240, nm_ed ? "KNOB: LETTER   PUSH: KEEP" : nm_at == NM_LEN ? "PUSH: DONE   HOME: CANCEL"
+               : "KNOB: MOVE  PUSH: EDIT  HOME: NO", &FT_SM, UI_DIM, UI_PANEL, 1);
+    for (int i = 0; i < 14; i++) last[i] = PRESET.name[i];
+    last_at = nm_at; last_ed = nm_ed; nm_drawn = 1;
+}
+static void name_knob(int dd)
+{
+    if (nm_ed) {
+        const int n = (int)sizeof NM_SET - 1, k = (nm_idx(PRESET.name[nm_at]) + n + (dd > 0 ? 1 : -1)) % n;
+        PRESET.name[nm_at] = NM_SET[k];
+    } else {
+        nm_at += dd > 0 ? 1 : -1;
+        if (nm_at < 0) nm_at = 0;
+        if (nm_at > NM_LEN) nm_at = NM_LEN;
+    }
+}
+static void name_done(int keep)
+{
+    if (keep) {                                        /* the spaces at the end dropped */
+        int e = NM_LEN;
+        while (e > 0 && PRESET.name[e - 1] == ' ') e--;
+        for (int i = e; i < 14; i++) PRESET.name[i] = 0;
+        if (!e) { PRESET.name[0] = '-'; }
+    } else for (int i = 0; i < 14; i++) PRESET.name[i] = nm_old[i];
+    save_page();
+}
+static void name_push(void)
+{
+    if (nm_at == NM_LEN) name_done(1);
+    else nm_ed = !nm_ed;
+}
+
 /* ===================================================== MIDI page ======== */
 /* hold FX: the MIDI settings (docs/MIDI.md). KNOB changes the selected row, PUSH moves to the next row and, after the
  * last one, leaves; HOME leaves. The settings are saved (a flash write, as SAVE) only if something changed.
@@ -1265,7 +1348,8 @@ static void ui_action(int a)
     static const uint8_t BLK_OF[5] = {PX_B_MOD, PX_B_AMP, PX_B_CAB, PX_B_DELAY, PX_B_REVERB};
 #endif
     switch (ui_mode) {
-    case M_SAVE: if (a == UB_PUSH) save_confirm(); else if (a == UB_HOME) save_close(); return;
+    case M_SAVE: if (a == UB_PUSH) save_confirm(); else if (a == UB_HOME) save_close(); else if (a == UB_FX && sv_dest != SV_FACTORY) name_open(); return;
+    case M_NAME: if (a == UB_PUSH) name_push(); else if (a == UB_HOME) name_done(0); return;
     case M_MIDI: if (a == UB_PUSH) midi_push(); else if (a == UB_HOME) midi_close(); return;
     case M_TUNER: if (a == UA_TUNER) diag_open(); else tuner_close(); return;   /* any control leaves; HOME held on: diagnostics */
     case M_DIAG: if (a != UA_TUNER) diag_close(); return;
@@ -1288,6 +1372,7 @@ static void ui_turn(int dd, int fast)  /* the PARA knob, one detent (fast: turne
 {
     ug.clk = 0;
     if (ui_mode == M_SAVE) save_knob(dd);
+    else if (ui_mode == M_NAME) name_knob(dd);
     else if (ui_mode == M_MIDI) midi_knob(dd);
     else if (ui_mode == M_LIST) list_knob(dd);
     else if (ui_mode == M_DIAG) diag_turn();
