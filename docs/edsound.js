@@ -229,18 +229,16 @@ function renderPage(fromPush) {
         range && h("output", { class: "val", for: id })));
     });
     if (!T.params.length) box.append(h("p", { class: "dim", text: "This type has no settings." }));
-    if (ampLevel(b)) {   // OpenPocket Bass: the AMP's LEVEL, kept in the first setting of the SFX block (not in the chain)
-      const ctl = h("input", { type: "range", id: "pamplvl", min: 0, max: 100, step: 1 });
-      ctl.oninput = () => { ctl.style.setProperty("--p", `${ctl.value}%`); ctl.parentElement.querySelector(".val").textContent = ctl.value; sendParam(SFX, 0, +ctl.value); };
-      box.append(h("div", { class: "prm" }, h("label", { for: "pamplvl", text: "LEVEL" }), ctl, h("output", { class: "val", for: "pamplvl" })));
+    if (ampLevel(b)) {   // OpenPocket Bass: the AMP's LEVEL and its 3 band frequencies, kept in the SFX block (not in the chain)
+      AMP_X.forEach(([name, k]) => {
+        const ctl = h("input", { type: "range", id: `pampx${k}`, min: 0, max: 100, step: 1 });
+        ctl.oninput = () => { showAmpX(k); sendParam(SFX, k, +ctl.value); };
+        box.append(h("div", { class: "prm" }, h("label", { for: `pampx${k}`, text: name }), ctl, h("output", { class: "val", for: `pampx${k}` })));
+      });
     }
     box.dataset.sig = sig;
   }
-  if (ampLevel(b)) {
-    const c = $("pamplvl");
-    if (document.activeElement !== c) c.value = p.p[SFX][0];
-    c.style.setProperty("--p", `${c.value}%`); c.parentElement.querySelector(".val").textContent = c.value;
-  }
+  if (ampLevel(b)) for (const [, k] of AMP_X) { const c = $(`pampx${k}`); if (document.activeElement !== c) c.value = p.p[SFX][k]; showAmpX(k); }
   T.params.forEach((_, k) => {
     const c = $(`p${k}`), v = p.p[b][k];
     if (c.type === "range") { if (!(fromPush && (c.dataset.held || (document.activeElement === c && pendingParam)))) c.value = v; }
@@ -251,6 +249,15 @@ function renderPage(fromPush) {
 }
 const SFX = 3;                                        // (engine/px_dsp.h PX_AMP_LVL_B: PX_B_SFX)
 const ampLevel = (b) => blk(b).label === "AMP" && blk(b).fixed >= 0;
+// (engine/px_dsp.c px_amp_band_hz: BASS 40..250 Hz, MID 200..1800 Hz, TREBLE 1.5..6 kHz, log; LEVEL +-12 dB)
+const AMP_X = [["LEVEL", 0], ["BASS FREQ", 1], ["MID FREQ", 2], ["TREBLE FREQ", 3]];
+const ampHz = (k, v) => [40 * 6.25 ** (v / 100), 200 * 9 ** (v / 100), 1500 * 4 ** (v / 100)][k - 1];
+function showAmpX(k) {
+  const c = $(`pampx${k}`); if (!c) return;
+  const v = +c.value, hz = k ? ampHz(k, v) : 0;
+  c.style.setProperty("--p", `${v}%`);
+  c.parentElement.querySelector(".val").textContent = k ? (hz >= 1000 ? `${(hz / 1000).toFixed(1)} kHz` : `${Math.round(hz)} Hz`) : `${(v - 50) * 24 / 100 > 0 ? "+" : ""}${((v - 50) * 24 / 100).toFixed(1)} dB`;
+}
 function showVal(k) {
   const c = $(`p${k}`), b = app.focus, p = app.st.preset, param = typeOf(p, b).params[k];
   if (!c || !param) return;

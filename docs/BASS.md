@@ -98,3 +98,13 @@ PUSH pra salvar no preset. O knob MASTER continua sendo o volume geral.
 Segure o **PUSH** (página SAVE) e aperte **FX**: abre o nome. O knob anda pelas 13 letras e pelo OK; o PUSH numa letra
 deixa trocar (o knob muda a letra, o PUSH confirma); o PUSH no OK volta pro SAVE com o nome novo; o HOME cancela. Depois
 o PUSH no SAVE grava o preset com o nome.
+
+## AMP e EQ com gráfico
+
+As páginas do AMP e do EQ mostram a curva de verdade (as mesmas contas dos filtros do som), no mesmo gráfico: 30 Hz a 8 kHz,
+±12 dB.
+
+- **AMP:** o knob passa por MODEL, os três pontos (BASS, MID, TREBLE), GAIN e LEVEL. Num ponto, o PUSH muda a
+  **frequência** (o ponto anda), o PUSH de novo muda o **ganho** (o ponto sobe ou desce), o PUSH mais uma vez volta.
+  BASS 40–250 Hz (padrão 100), MID 200–1800 Hz (600), TREBLE 1,5–6 kHz (3 kHz), todos ±12 dB.
+- **EQ:** o sino do médio anda com a frequência e a área sombreada abre ou fecha com o Q; os cinco valores ficam embaixo.

@@ -549,11 +549,7 @@ static const tdef T_REV[PX_REV_COUNT] = {
 static const char *const PN_AMP[] = {"GAIN", "BASS", "MID", "TREBLE", "PRESENCE"};
 /* (OpenPocket Bass: GAIN drives the capture, half of its level change taken back; the amp's LEVEL is a 6th setting, kept
  * in the SFX block's first, a block the bass chain does not use: px_dsp.h PX_AMP_LVL_B) */
-#if PX_BASS
-static const char *const PN_NAM[] = {"MODEL", "GAIN", "BASS 120 HZ", "MID 600 HZ", "TREBLE 2.5 KHZ"};   /* (where each acts) */
-#else
 static const char *const PN_NAM[] = {"MODEL", "GAIN", "BASS", "MID", "TREBLE"};
-#endif
 static const char *const PN_CAB[] = {"BODY", "BRIGHT", "MIC"};
 #if PX_BASS
 /* OpenPocket Bass: MIX doses the cabinet alone: the amp's output without the IR against it through the IR (0: no IR);
@@ -722,6 +718,7 @@ int px_param_text(int b, int t, int k, int v, char *buf)
             buf[8] = 0;
             return 1;
         }
+        if (t == PX_AMP_NAM && k >= 2 && PX_BASS) { float db = (x - 0.5f) * 24.0f; put_int(buf, (int)(db + (db >= 0 ? 0.5f : -0.5f)), 1); return 1; }   /* (Bass: the bands in dB) */
         if (t == PX_AMP_NAM && k == 1 && !PX_BASS) { float db = (x - 0.5f) * 24.0f; put_int(buf, (int)(db + (db >= 0 ? 0.5f : -0.5f)), 1); return 1; }   /* (Bass: GAIN 0..100) */
         break;
     case PX_B_PITCH:
@@ -818,7 +815,7 @@ static void bass_factory(px_preset_t *p, int idx)
     blk(p, PX_B_COMP, 0, PX_CMP_STUDIO, 40, 40, 70, 60, 0);   /* (off: there if wanted) */
     blk(p, PX_B_PITCH, 0, PX_PIT_BASSOCT, 70, 60, 0, 40, 30);
     blk(p, PX_B_GATE, 0, 0, 15, 50, 50, 0, 0);
-    blk(p, PX_B_SFX, 0, 0, 50, 0, 0, 0, 0);            /* (the SFX block's first setting: the amp's LEVEL, 0 dB) */
+    blk(p, PX_B_SFX, 0, 0, 50, 50, 50, 50, 0);         /* (the SFX block: the amp's LEVEL 0 dB, its bands at 100 Hz, 600 Hz, 3 kHz) */
     BEQ(50, 50, 50, 11, 50);
     UNAM(0, 50); BIR(0, 0, 0, 0);
     switch (idx) {
@@ -1390,6 +1387,38 @@ void px_nam_fast(void *base, unsigned bytes) { pxn_set_fast((int32_t *)base, byt
 /* every model is trimmed to -20 LUFS on the DI clip (its level trim); this puts NAM + the 1x12 at GAIN noon at the fitted
  * amps' -23 LUFS (mean over the factory models, measured by tools/level_presets.py's DI) */
 #define PX_NAM_REF_DB (-6.0f)
+static int eq_design(const px_preset_t *p, float sr, px_bq *eq);
+/* OpenPocket Bass: the amp's tone, three bands whose frequencies move (kept in the SFX block's settings 1..3, as LEVEL in
+ * its 0th): BASS a low shelf 40..250 Hz, MID a peak (Q 0.7) 200 Hz..1.8 kHz, TREBLE a high shelf 1.5..6 kHz, each +-12 dB;
+ * each one's middle (50) is 100 Hz, 600 Hz, 3 kHz. */
+float px_amp_band_hz(int band, int v)
+{
+    const float x = (float)(v < 0 ? 0 : v > 100 ? 100 : v) * 0.01f;
+    return band == 0 ? 40.0f * powf(6.25f, x) : band == 1 ? 200.0f * powf(9.0f, x) : 1500.0f * powf(4.0f, x);
+}
+static void amp_tone_design(const px_preset_t *p, float sr, px_bq *t)
+{
+    const uint8_t *q = p->p[PX_B_AMP], *f = p->p[PX_AMP_LVL_B];
+    bq_lowshelf(&t[0], sr, px_amp_band_hz(0, f[1]), (f01(q[2]) - 0.5f) * 24.0f);
+    bq_peak(&t[1], sr, px_amp_band_hz(1, f[2]), 0.7f, (f01(q[3]) - 0.5f) * 24.0f);
+    bq_highshelf(&t[2], sr, px_amp_band_hz(2, f[3]), (f01(q[4]) - 0.5f) * 24.0f);
+}
+/* for the screen's curves (firmware/ui.h): a block's tone filters as the engine makes them (AMP: the three bands; EQ: its
+ * type's), and one filter's level in dB at hz, from cos w alone */
+int px_tone_bq(int b, const px_preset_t *p, px_bq *out)
+{
+    if (b == PX_B_AMP) { amp_tone_design(p, 44100.0f, out); return 3; }
+    if (b == PX_B_EQ) return eq_design(p, 44100.0f, out);
+    return 0;
+}
+float px_bq_db(const px_bq *f, float hz)               /* (the phi = sin^2(w/2) form: exact near DC, where cos w is ~1) */
+{
+    const float sw = sinf(PI_F * hz / 44100.0f), ph = sw * sw;   /* (float only: the pedal has no double maths) */
+    const float b0 = f->b0, b1 = f->b1, b2 = f->b2, a1 = f->a1, a2 = f->a2, sb = b0 + b1 + b2, sa = 1.0f + a1 + a2;
+    const float num = sb * sb - 4.0f * (b0 * b1 + 4.0f * b0 * b2 + b1 * b2) * ph + 16.0f * b0 * b2 * ph * ph;
+    const float den = sa * sa - 4.0f * (a1 + 4.0f * a2 + a1 * a2) * ph + 16.0f * a2 * ph * ph;
+    return 4.3429448f * logf((num > 1e-30f ? num : 1e-30f) / (den > 1e-30f ? den : 1e-30f));
+}
 static void rc_nam(px_engine *e)
 {
     const px_preset_t *p = &e->cur;
@@ -1405,10 +1434,15 @@ static void rc_nam(px_engine *e)
     }
     /* the pedal's input (hard playing ~ -17 dBFS) -> the captures' DI level (x 1 / 0.15), then GAIN +-12 dB */
     e->nam_in_g = (1.0f / 0.15f) * powf(10.0f, (f01(q[1]) - 0.5f) * 24.0f * 0.05f);
+#if !PX_BASS
     bq_lowshelf(&e->ts_low, sr, 120.0f, (f01(q[2]) - 0.5f) * 20.0f);
+#endif
 #if PX_BASS
-    bq_peak(&e->ts_mid, sr, 600.0f, 0.7f, (f01(q[3]) - 0.5f) * 16.0f);   /* a bass amp's middle */
-    bq_highshelf(&e->ts_high, sr, 2500.0f, (f01(q[4]) - 0.5f) * 20.0f);
+    {                                                  /* (the coefficients only: the filters keep their state) */
+        px_bq t[3] = {{0}}, *d[3] = {&e->ts_low, &e->ts_mid, &e->ts_high};
+        amp_tone_design(p, sr, t);
+        for (int i = 0; i < 3; i++) { d[i]->b0 = t[i].b0; d[i]->b1 = t[i].b1; d[i]->b2 = t[i].b2; d[i]->a1 = t[i].a1; d[i]->a2 = t[i].a2; }
+    }
     const float lvl = f01(p->p[PX_AMP_LVL_B][PX_AMP_LVL_K]);
     e->nam_out_g = pxb.nam_base * powf(10.0f, ((lvl - 0.5f) * 24.0f - (f01(q[1]) - 0.5f) * 12.0f) * 0.05f);
 #else
@@ -1797,40 +1831,41 @@ static void rc_cab(px_engine *e)
     e->cab_n = n;
 }
 
-static void rc_eq(px_engine *e)
+static int eq_design(const px_preset_t *p, float sr, px_bq *eq)   /* the EQ block's filters, how many */
 {
-    const px_preset_t *p = &e->cur;
-    float sr = e->sr;
+    int n;
     const uint8_t *q = p->p[PX_B_EQ];
     int t = p->type[PX_B_EQ] % PX_EQ_COUNT;
 #define EQDB(k) ((f01(q[k]) - 0.5f) * 24.0f)
     if (t == PX_EQ_5BAND) {
-        bq_lowshelf(&e->eq[0], sr, 100.0f, EQDB(0));
-        bq_peak(&e->eq[1], sr, 400.0f, 1.0f, EQDB(1));
-        bq_peak(&e->eq[2], sr, 1000.0f, 1.0f, EQDB(2));
-        bq_peak(&e->eq[3], sr, 2500.0f, 1.0f, EQDB(3));
-        bq_highshelf(&e->eq[4], sr, 6000.0f, EQDB(4));
-        e->eq_n = 5;
+        bq_lowshelf(&eq[0], sr, 100.0f, EQDB(0));
+        bq_peak(&eq[1], sr, 400.0f, 1.0f, EQDB(1));
+        bq_peak(&eq[2], sr, 1000.0f, 1.0f, EQDB(2));
+        bq_peak(&eq[3], sr, 2500.0f, 1.0f, EQDB(3));
+        bq_highshelf(&eq[4], sr, 6000.0f, EQDB(4));
+        n = 5;
     } else if (t == PX_EQ_GEQ) {                       /* the 5-band graphic of the Californian lead amps */
-        bq_peak(&e->eq[0], sr, 80.0f, 1.4f, EQDB(0));
-        bq_peak(&e->eq[1], sr, 240.0f, 1.4f, EQDB(1));
-        bq_peak(&e->eq[2], sr, 750.0f, 1.4f, EQDB(2));
-        bq_peak(&e->eq[3], sr, 2200.0f, 1.4f, EQDB(3));
-        bq_peak(&e->eq[4], sr, 6600.0f, 1.4f, EQDB(4));
-        e->eq_n = 5;
+        bq_peak(&eq[0], sr, 80.0f, 1.4f, EQDB(0));
+        bq_peak(&eq[1], sr, 240.0f, 1.4f, EQDB(1));
+        bq_peak(&eq[2], sr, 750.0f, 1.4f, EQDB(2));
+        bq_peak(&eq[3], sr, 2200.0f, 1.4f, EQDB(3));
+        bq_peak(&eq[4], sr, 6600.0f, 1.4f, EQDB(4));
+        n = 5;
     } else if (t == PX_EQ_BASS) {                      /* OpenPocket Bass: a mid that sweeps down to the low B */
-        bq_lowshelf(&e->eq[0], sr, 80.0f, EQDB(0));
-        bq_peak(&e->eq[1], sr, 40.0f * powf(100.0f, f01(q[1])), 0.4f + f01(q[3]) * 5.6f, EQDB(2));
-        bq_highshelf(&e->eq[2], sr, 3500.0f, EQDB(4));
-        e->eq_n = 3;
+        bq_lowshelf(&eq[0], sr, 80.0f, EQDB(0));
+        bq_peak(&eq[1], sr, 40.0f * powf(100.0f, f01(q[1])), 0.4f + f01(q[3]) * 5.6f, EQDB(2));
+        bq_highshelf(&eq[2], sr, 3500.0f, EQDB(4));
+        n = 3;
     } else {
-        bq_lowshelf(&e->eq[0], sr, 100.0f, EQDB(0));
-        bq_peak(&e->eq[1], sr, 150.0f * powf(33.0f, f01(q[1])), 0.4f + f01(q[3]) * 5.6f, EQDB(2));
-        bq_highshelf(&e->eq[2], sr, 5000.0f, EQDB(4));
-        e->eq_n = 3;
+        bq_lowshelf(&eq[0], sr, 100.0f, EQDB(0));
+        bq_peak(&eq[1], sr, 150.0f * powf(33.0f, f01(q[1])), 0.4f + f01(q[3]) * 5.6f, EQDB(2));
+        bq_highshelf(&eq[2], sr, 5000.0f, EQDB(4));
+        n = 3;
     }
 #undef EQDB
+    return n;
 }
+static void rc_eq(px_engine *e) { e->eq_n = eq_design(&e->cur, e->sr, e->eq); }
 
 static void rc_mod(px_engine *e)
 {

@@ -112,7 +112,7 @@ int main(void)
     printf("2. OpenPocket Bass: CAB MIX (the cabinet alone), NAM LEVEL and GAIN, AMP and CAB of one type\n");
     {
         static float a[FR * NB], b[FR * NB];
-        char m[112];
+        char m[200];
         px_preset_t pm; bass_preset(&pm, 0, 0, 1);       /* MIX 0: the IR's input alone, as the cabinet off */
         run_plain(&pm, sig, a, FR * NB);
         px_preset_t q = pm; q.on[PX_B_CAB] = 0;
@@ -143,8 +143,8 @@ int main(void)
         }
         CHECK(!memcmp(ref, got, sizeof(float) * FR * (NB - 1)), "MIX 50: the pipeline = the plain engine, one block later");
         /* NAM: LEVEL 0 is -12 dB, 25 -6 dB (above 50 this loud test signal meets the output's soft clipper) */
-        CHECK(!strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 1), "GAIN") && !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 3), "MID 600 HZ") &&
-              !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 4), "TREBLE 2.5 KHZ"), "NAM: MODEL, GAIN, BASS, MID, TREBLE (and LEVEL in the SFX block's 1st)");
+        CHECK(!strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 1), "GAIN") && !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 3), "MID") &&
+              !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 4), "TREBLE"), "NAM: MODEL, GAIN, BASS, MID, TREBLE (and LEVEL in the SFX block's 1st)");
         double lv[3];
         for (int j = 0; j < 3; j++) {
             bass_preset(&pm, 0, 0, 1); pm.on[PX_B_CAB] = 0; pm.p[PX_AMP_LVL_B][PX_AMP_LVL_K] = (uint8_t)(j * 25);
@@ -161,6 +161,26 @@ int main(void)
         double en = 0; for (int i = 4096; i < FR * NB; i++) en += (double)a[i] * a[i];
         snprintf(m, sizeof m, "NAM GAIN 100: %+.1f dB against 50 (12 dB in, 6 dB taken back: at most +6)", 10 * log10(en + 1e-30) - lv[1]);
         CHECK(10 * log10(en + 1e-30) - lv[1] < 6.5, m);
+        /* the amp's bands move (SFX block 1..3) and the screen's curve (px_tone_bq) is what the sound does: a quiet sine at
+         * 60 Hz and at 1 kHz, BASS +12 at 100 Hz then at 40 Hz, the change measured against the curve's */
+        {
+            static float si[44100], so0[44100], so1[44100];
+            const float fq[2] = {60.0f, 1000.0f};
+            int good = 1; char why[160] = "";
+            for (int fi = 0; fi < 2; fi++) for (int bf = 0; bf < 2; bf++) {
+                for (int i = 0; i < 44100; i++) si[i] = 0.002f * sinf(2.0f * 3.14159265f * fq[fi] * i / 44100.0f);
+                px_preset_t p0; bass_preset(&p0, 0, 0, 1); p0.on[PX_B_CAB] = 0; p0.p[PX_AMP_LVL_B][1] = (uint8_t)(bf ? 0 : 50);
+                px_preset_t p1 = p0; p1.p[PX_B_AMP][2] = 100;
+                run_plain(&p0, si, so0, 44032); run_plain(&p1, si, so1, 44032);
+                double e0 = 0, e1 = 0; for (int i = 22050; i < 44032; i++) { e0 += (double)so0[i] * so0[i]; e1 += (double)so1[i] * so1[i]; }
+                px_bq f[5]; px_tone_bq(PX_B_AMP, &p1, f);
+                const double want = px_bq_db(&f[0], fq[fi]), got = 10 * log10(e1 / e0);
+                if (fabs(want - got) > 0.6) good = 0;
+                snprintf(why + strlen(why), sizeof why - strlen(why), " %g Hz/%s %.1f:%.1f", fq[fi], bf ? "40" : "100", got, want);
+            }
+            snprintf(m, sizeof m, "AMP BASS +12 (at 100 then 40 Hz): the sound against the screen's curve, dB%s", why);
+            CHECK(good && px_amp_band_hz(0, 50) > 99.0f && px_amp_band_hz(0, 50) < 101.0f, m);
+        }
         /* a preset that says another amp or cabinet still plays NAM and the USER IR */
         bass_preset(&pm, 100, 0, 1);
         run_plain(&pm, sig, a, FR * NB);

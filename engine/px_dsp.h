@@ -39,7 +39,9 @@ int px_block_used(int b);
 int px_type_fixed(int b);
 /* OpenPocket Bass: the AMP's 6th setting, LEVEL (+-12 dB), is kept in an unused block's first setting (presets keep 5 a block) */
 #define PX_AMP_LVL_B PX_B_SFX
-#define PX_AMP_LVL_K 0    /* OpenPocket Bass: the one type a block has (AMP: NAM, CAB: USER IR), -1: chosen */    /* OpenPocket Bass: 1 = the block is in the chain (GATE COMP PITCH EQ AMP CAB) */
+#define PX_AMP_LVL_K 0
+/* ... and the amp's three band frequencies in its 1st..3rd (px_amp_band_hz: band 0 BASS, 1 MID, 2 TREBLE, v 0..100) */
+float px_amp_band_hz(int band, int v);    /* OpenPocket Bass: the one type a block has (AMP: NAM, CAB: USER IR), -1: chosen */    /* OpenPocket Bass: 1 = the block is in the chain (GATE COMP PITCH EQ AMP CAB) */
 
 enum { PX_CMP_SQUASH, PX_CMP_STUDIO, PX_CMP_OPTO, PX_CMP_SWELL, PX_CMP_COUNT };
 enum { PX_PIT_OCTAVER, PX_PIT_POLYOCT, PX_PIT_WHAMMY, PX_PIT_HARMONY, PX_PIT_DETUNE,
@@ -293,6 +295,9 @@ int         px_nam_dual(const px_engine *e);          /* 1 = its NAM runs on two
 int         px_nam_lp(px_engine *e, int on);          /* v40.2: the layer split on (if it can run) or off */
 int         px_nam_lp_b(px_engine *e);                /* v40.2: the other core's part of the oldest queued block */
 
+/* the screen's curves: a block's tone filters (AMP, EQ) as the engine makes them, how many; one filter's level at hz (dB) */
+int   px_tone_bq(int b, const px_preset_t *p, px_bq *out);
+float px_bq_db(const px_bq *f, float hz);
 void px_engine_init(px_engine *e, float sr);
 void px_engine_set(px_engine *e, const px_preset_t *p);
 /* v38: changes without clicks.
