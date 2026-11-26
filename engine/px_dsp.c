@@ -1309,7 +1309,12 @@ static int nam_load(int m, float *level_db)
 {
     const float *w = 0;
     *level_db = 0.0f;
+#if PX_NAM_NO_FACTORY    /* the Bluetooth audio image (OP_BT=1): the 12 guitar models' weights (88 KB) make room for the radio; the bass
+                         * presets use the user slots. A factory model then loads nothing (the amp is silent, as with an empty slot). */
+    if (m >= 0 && m < PX_NAM_NFACT) { px_nam_m.ready = 0; return -1; }
+#else
     if (m >= 0 && m < PX_NAM_NFACT) { w = PXN_FW[m]; *level_db = PXN_FLVL[m]; }
+#endif
     else if (m >= PX_NAM_NFACT && m < PX_NAM_N) {
         char nm[12];
         float *tmp = (float *)px_nam_r0;

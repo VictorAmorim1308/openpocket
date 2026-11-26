@@ -57,3 +57,17 @@ int32_t __fixdfsi(uint64_t a)
     return (a >> 63) ? -v : v;
 }
 uint32_t __fixunsdfsi(uint64_t a) { return (a >> 63) ? 0u : (uint32_t)__fixdfsi(a); }
+
+/* 64-bit unsigned division (the pairing's big integers, bigint.c), shift and subtract */
+uint64_t __udivdi3(uint64_t n, uint64_t d)
+{
+    uint64_t q = 0, r = 0;
+    int i;
+    if (!d) return ~0ull;
+    for (i = 63; i >= 0; i--) {
+        r = (r << 1) | ((n >> i) & 1u);
+        if (r >= d) { r -= d; q |= 1ull << i; }
+    }
+    return q;
+}
+uint64_t __umoddi3(uint64_t n, uint64_t d) { return d ? n - __udivdi3(n, d) * d : n; }
