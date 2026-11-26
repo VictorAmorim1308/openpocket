@@ -67,4 +67,8 @@ for n, s, c, a in data:
     if n.startswith("log_tag_const_"): out.append(f"const char {n} = 0;"); continue
     out.append(f"{'const ' if c else ''}uint8_t {n}[{s}] __attribute__((aligned({max(a,1)})));" if s > 4 or not c else f"const uint{s*8 if s in (1,2,4) else 32}_t {n} = 0;")
 open(os.path.join(fw, "bt/bt_stubs_gen.c"), "w").write("\n".join(out) + "\n")
+# the image's C, with the file: it must compile (a redefinition shows here, not in CI)
+r = subprocess.run([c for c in cmd if c != "-DBT_NO_GEN_STUBS=1" and c != "-w"] + ["-Wno-implicit-function-declaration"], capture_output=True, text=True)
+errs = [l for l in r.stderr.splitlines() if "error" in l]
+if r.returncode: sys.exit("\n".join(errs[:20]))
 print(f"{len(files)} members, {len(undef)} undefined names, {len(fn)} function stubs, {len(data)} data; not classified: {odd}")
