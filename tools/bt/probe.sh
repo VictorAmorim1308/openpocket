@@ -15,13 +15,11 @@ while read -r m; do
   o="$W/$(echo "$m" | tr / _).o"
   if $CC -Os -c -x ir "$W/x/$m" -o "$o" 2>"$W/err"; then echo "$o" >> "$W/objs"; else echo "FAILED $m: $(head -c 300 "$W/err")"; fi
 done < /src/tools/bt/members.txt
-SZ="$TC/common/bin/size"; [ -x "$SZ" ] || SZ="$(ls "$TC"/*/bin/*size* 2>/dev/null | head -1)"
-echo "== per object (text data bss) — the 25 largest"
-$SZ $(cat "$W/objs") 2>/dev/null | sort -k1 -n -r | head -26
-echo "== total"; $SZ -t $(cat "$W/objs") 2>/dev/null | tail -1
-LINK="$(ls "$TC"/*/bin/llvm-link 2>/dev/null | head -1)"
-if [ -n "$LINK" ]; then
-  echo "== LTO: one module"
-  ins=""; while read -r m; do ins="$ins $W/x/$m"; done < /src/tools/bt/members.txt
-  if $LINK $ins -o "$W/all.bc" 2>"$W/lerr"; then $CC -Os -c -x ir "$W/all.bc" -o "$W/all.o" && $SZ "$W/all.o"; else head -c 2000 "$W/lerr"; fi
-else echo "== no llvm-link in the toolchain"; fi
+OD="$TC/pi32v2/bin/objdump"
+echo "== objdump -h sample"; $OD -h "$(head -1 "$W/objs")" | head -20
+echo "== per object (flash data bss): the 25 largest"
+python3 /src/tools/bt/sizes.py "$OD" $(cat "$W/objs")
+LINK="$TC/common/bin/llvm-link"
+echo "== LTO: one module"
+ins=""; while read -r m; do ins="$ins $W/x/$m"; done < /src/tools/bt/members.txt
+if $LINK $ins -o "$W/all.bc" 2>"$W/lerr"; then $CC -Os -c -x ir "$W/all.bc" -o "$W/all.o" && python3 /src/tools/bt/sizes.py "$OD" "$W/all.o"; else head -c 3000 "$W/lerr"; fi
