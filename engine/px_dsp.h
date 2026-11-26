@@ -158,8 +158,15 @@ typedef struct { float x[6], y[6]; } px_hb;           /* v38: a half-band filter
 
 #define PX_PS_N 2048                   /* pitch shifter buffer (46 ms) */
 #define PX_SYN_CB 1024                 /* SYN: ensemble / doubler / body reflections (23 ms) */
+#if defined(PX_BASS) && PX_BASS
+/* OpenPocket Bass: no delay and no reverb in the chain (px_block_used): their lines shrink to a token, which gives about
+ * 114 KB of the engine's RAM (POOL) back, for Bluetooth audio. The engine never runs them (bass_only), nor sets them up. */
+#define PX_DLY_N 2048
+#define PX_RV_M 1024
+#else
 #define PX_DLY_N 45056                 /* v40: 2.04 s of delay at half rate (22.05 kHz, 16-bit: 88 KB), as the stock */
 #define PX_RV_M 16384                  /* reverb memory: one 16-bit ring (32 KB) at half rate, laid out per type */
+#endif
 #define PX_CABM 6                      /* cabinet detail: cone breakup modes (2-pole resonators) */
 #define PX_CABT 8                      /* cabinet detail: sparse taps (mic comb, back wave) */
 typedef struct {                       /* cabinet detail: its taps, breakup resonators and gain (v38: one struct, so */

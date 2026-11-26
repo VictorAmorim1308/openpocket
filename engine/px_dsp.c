@@ -2240,18 +2240,15 @@ static void px_recalc(px_engine *e)
     float sr = e->sr, osr = sr * PX_OVERSAMPLE;
     rc_dyn(e);
     rc_pitch(e);
-    rc_sfx(e);
+    if (!PX_BASS) rc_sfx(e);                           /* (Bass: the blocks out of the chain are not set up) */
     (void)osr;                                         /* (v38: the half-band filters have fixed coefficients) */
     /* v37: before a NAM amp the drive runs at x2 (the network does not alias; x4 cost 18% of the CPU) */
     e->drv_os = (e->cur.on[PX_B_AMP] && e->cur.type[PX_B_AMP] == PX_AMP_NAM) ? 2 : PX_OVERSAMPLE;
-    rc_drive(e);
+    if (!PX_BASS) rc_drive(e);
     rc_amp(e);
     rc_cab(e);
     rc_eq(e);
-    rc_mod(e);
-    rc_delay(e);
-    rc_reverb(e);
-    rc_syn(e);
+    if (!PX_BASS) { rc_mod(e); rc_delay(e); rc_reverb(e); rc_syn(e); }
     /* v36: each type's level at noon, measured (px_trim.h): switching a block on keeps the loudness */
     const px_preset_t *p = &e->cur;
     static const float *const DB[PX_NBLK] = {0, CMP_DB, PIT_DB, SFX_DB, 0, 0, CAB_DB, 0, MOD_DB, DLY_DB, REV_DB, SYN_DB};
@@ -2400,14 +2397,14 @@ void px_engine_knobs(px_engine *e, const px_preset_t *p)
         case PX_B_GATE: case PX_B_COMP: rc_dyn(e); break;
         case PX_B_PITCH: rc_pitch(e); break;
         case PX_B_SFX: if (PX_BASS) rc_amp(e); else rc_sfx(e); break;   /* (Bass: it holds the amp's LEVEL) */
-        case PX_B_DRIVE: rc_drive(e); break;
+        case PX_B_DRIVE: if (!PX_BASS) rc_drive(e); break;
         case PX_B_AMP: rc_amp(e); break;
         case PX_B_CAB: rc_cab(e); break;
         case PX_B_EQ: rc_eq(e); break;
-        case PX_B_MOD: rc_mod(e); break;
-        case PX_B_DELAY: rc_delay(e); break;
-        case PX_B_REVERB: rc_reverb(e); break;
-        default: rc_syn(e); break;
+        case PX_B_MOD: if (!PX_BASS) rc_mod(e); break;
+        case PX_B_DELAY: if (!PX_BASS) rc_delay(e); break;
+        case PX_B_REVERB: if (!PX_BASS) rc_reverb(e); break;
+        default: if (!PX_BASS) rc_syn(e); break;
         }
     }
     px_may_load = 1;
