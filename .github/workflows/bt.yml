@@ -36,6 +36,8 @@ jobs:
             build/sdk/LICENSE
       - name: Build the container
         run: docker build --platform linux/amd64 -t opb .
+      - name: The BLE test image (baseline)
+        run: docker run --rm --platform linux/amd64 -v "$PWD:/src" -w /src -e OP_BLE=1 opb sh firmware/build.sh 2>&1 | tail -40
       - name: Probe the classic stack's size
         run: docker run --rm --platform linux/amd64 -v "$PWD:/src" -w /src -e SDK=/src/build/sdk opb sh tools/bt/probe.sh
   sdk-branch:
