@@ -27,10 +27,16 @@ static void test_task(void *arg)
     int rc;
     (void)arg;
     ble_stage_set(BLE_STAGE_INIT);                              /* (BLE_STAGE_RF: ble_rf.c, inside the init) */
+#if OP_BT_AUDIO
+    bt_pre_init();                                              /* the classic host's settings (bt_a2dp.c) */
+#endif
     rc = btstack_init();
     if (rc) { ble_judge_start(rc, 1); return; }
     ble_stage_set(BLE_STAGE_READY);
     bt_max_pwr_set(10, 5, 8, 9);                                /* after the controller's own init, which resets its power settings */
+#if OP_BT_AUDIO
+    bt_post_init();
+#endif
 }
 
 void ble_test_start(void)
@@ -49,6 +55,9 @@ void ble_test_poll(void)
     ble_busy(1);
     ble_poll();
     ble_busy(0);
+#if OP_BT_AUDIO
+    bt_audio_poll();                                            /* the music's packets -> the ring (bt_a2dp.c) */
+#endif
     ble_stub_collect();
     if (ble_state == BLE_STARTING && fm1_uptime_ms() - t_start > 5000u)
     {   /* (the task, if it is still waiting, is left alone) */

@@ -27,3 +27,4 @@ btstack/utils.c.bc
 cpu/crc16.c.bc
 cpu/delay.c.bc
 cpu/wlc.c.bc
+btctrler/h4_controller_interface.c.bc

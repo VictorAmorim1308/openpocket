@@ -32,3 +32,4 @@ crypto_toolbox_Osize.a	hmac.c.o	crypto/hmac.c.bc
 crypto_toolbox_Osize.a	sha256.c.o	crypto/sha256.c.bc
 crypto_toolbox_Osize.a	uECC_new.c.o	crypto/uECC_new.c.bc
 lib_sbc_eng.a	sbceng.o	sbc/sbceng.bc
+system.a	lbuf.c.o	system/lbuf.c.bc

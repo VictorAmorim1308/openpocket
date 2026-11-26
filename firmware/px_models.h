@@ -31,7 +31,11 @@ typedef struct {
 typedef char nm_hdr_check[sizeof(nm_hdr_t) == NM_HDR ? 1 : -1];
 
 #if OP_BLE_TEST   /* the Bluetooth test image: in the SRAM below the RAM (app.ld .bss_lo); what it holds is checked before use */
+#if OP_BT_AUDIO   /* the Bluetooth audio image: the low RAM is full, the pool's free end is not */
+static uint8_t nm_stage[NM_BYTES] __attribute__((aligned(4), section(".pool.tail.nm_stage")));
+#else
 static uint8_t nm_stage[NM_BYTES] __attribute__((aligned(4), section(".bss.lo.nm_stage")));
+#endif
 #else
 static uint8_t nm_stage[NM_BYTES] __attribute__((aligned(4)));
 #endif

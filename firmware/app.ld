@@ -24,7 +24,19 @@ MEMORY
 SECTIONS
 {
     .text : { KEEP(*(.text.crt0)) *(EXCLUDE_FILE(*libjl.a:*) .text*) *(EXCLUDE_FILE(*libjl.a:*) .rodata*) _etext_fw = .;
-              *libjl.a:*(.text* .rodata*) *(.*_code) *(.*_const) . = ALIGN(4); _etext = .; } > XIP
+              *libjl.a:*(.text* .rodata*)
+              /* the Bluetooth host's tables, collected from its objects (JieLi SDK include_lib/btstack/btstack_lib.ld,
+               * btctrler/btctler_lib_text.ld; the Bluetooth audio image, OP_BT=1; empty otherwise) */
+              . = ALIGN(4);
+              a2dp_source_media_codec_begin = .; KEEP(*(.a2dp_source_media_codec)) a2dp_source_media_codec_end = .;
+              a2dp_sink_media_probe_begin = .; KEEP(*(.a2dp_sink_media_probe)) a2dp_sink_media_probe_end = .;
+              a2dp_sink_media_codec_begin = .; KEEP(*(.a2dp_sink_media_codec)) a2dp_sink_media_codec_end = .;
+              a2dp_event_handler_begin = .; KEEP(*(.a2dp_event_handler)) a2dp_event_handler_end = .;
+              sdp_record_item_begin = .; KEEP(*(.sdp_record_item)) sdp_record_item_end = .;
+              bt_sleep_begin = .; KEEP(*(.bt_sleep)) bt_sleep_end = .;
+              tws_func_stub_begin = .; KEEP(*(.tws_func_stub)) tws_func_stub_end = .;
+              lp_target_begin = .; KEEP(*(.lp_target)) lp_target_end = .;
+              *(.*_code) *(.*_const) . = ALIGN(4); _etext = .; } > XIP
     /* (_etext_fw: the end of the firmware's own flash code; the Bluetooth controller library's (libjl.a) comes after
      * it and never calls the RAM code: firmware/build.sh sends its memcpy / memset to flash copies) */
     .ram_text : { _rt_start = .; KEEP(*(.ram_text*))
@@ -41,10 +53,16 @@ SECTIONS
     .bss_lo (NOLOAD) : { . = ALIGN(8); _bss_lo_start = .; *(.bss.lo.*) . = ALIGN(4); _bss_lo_end = .; } > LOWRAM
     .data : { . = ALIGN(4); _data_start = .; *(.data*) *(.sdata*) *(.*_data) . = ALIGN(4); _data_end = .; } > RAM AT > XIP
     _data_load = LOADADDR(.data);
-    .bss (NOLOAD) : { _bss_start = .; *(.bss*) *(.sbss*) *(.*_bss) *(COMMON) . = ALIGN(4); _bss_end = .; } > RAM
+    .bss (NOLOAD) : { _bss_start = .; *(EXCLUDE_FILE(*libjl.a:*) .bss*) *(EXCLUDE_FILE(*libjl.a:*) .sbss*) *(EXCLUDE_FILE(*libjl.a:*) .*_bss)
+                      *(EXCLUDE_FILE(*libjl.a:*) COMMON) . = ALIGN(4); _bss_end = .; } > RAM
     .noinit (NOLOAD) : { *(.noinit) *(.noinit.ble) . = ALIGN(8); _ble_stack_lo = .; *(.noinit.ble_stack) _ble_stack_hi = .; *(.noinit*) } > NOINIT
     .cram (NOLOAD) : { _cram_lo = .; *(.cram*) . = ALIGN(8); _cram_hi = .; } > CRAM   /* CPU-only data, zeroed by pxc_init */
-    .pool (NOLOAD) : { . = ALIGN(8); *(.pool) . = ALIGN(8); _pool_tail_start = .; *(.pool.tail.*) . = ALIGN(4); _pool_tail_end = .; } > POOL
+    .pool (NOLOAD) : { . = ALIGN(8); *(.pool) . = ALIGN(8); _pool_tail_start = .; *(.pool.tail.*)
+                       /* the Bluetooth library's zeroed data (libjl.a: the BLE test image and the audio image), its baseband table
+                        * and its ACL pools (empty: the SDK's CONFIG_BT_*_BUFF_SIZE are not set on the AC79) */
+                       . = ALIGN(4); *(.bd_base) *(.bredr_rxtx_bulk) acl_tx_pool = .; *(.bredr_tx_bulk) acl_tx_pool_end = .;
+                       acl_rx_pool = .; *(.bredr_rx_bulk) acl_rx_pool_end = .;
+                       *libjl.a:*(.bss* .sbss* .*_bss COMMON) . = ALIGN(4); _pool_tail_end = .; } > POOL
     /* (.pool.tail.*: engine buffers marked PX_POOL_TAIL in the pool's free end, zeroed by fm1_cstart like .bss) */
     _guard0 = 0x01C74000; _ustack_lo = 0x01C74100; _ustack_top = 0x01C7A000;
     _guard1 = 0x01C7A000; _sstack_lo = 0x01C7A100; _sstack_top = 0x01C7C000;

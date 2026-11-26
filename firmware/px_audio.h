@@ -660,6 +660,9 @@ static void a_send(int32_t *d, uint32_t n)             /* an output block filled
     a_collect();                                       /* the previous block must be finished */
     if (n > A_FR) n = A_FR;
     for (uint32_t i = 0; i < n; i++) d[2u * i] = d[2u * i + 1u] = a_res[i];
+#if OP_BT_AUDIO
+    bt_music_mix(d, n, a_gain);                        /* the phone's music beside the bass (firmware/bt/bt_music.h) */
+#endif
 #if OP_UAUDIO
     if (a_ua) {                                        /* v42: USB audio */
         const uint32_t t = fm1_ticks();

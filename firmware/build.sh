@@ -4,7 +4,11 @@
 # OP_BLE=1 sh firmware/build.sh builds the Bluetooth MIDI test image instead (docs/BLE-TEST.md): the same
 #   firmware plus the JieLi controller and host (third_party/jieli-ble) -> firmware/openpocket-ble.bin and build/ble/*.fwsc.
 #   Nothing of the normal build's outputs is touched.
+# OP_BT=1 sh firmware/build.sh builds the Bluetooth audio test image (OpenPocket Bass): the same firmware plus JieLi's
+#   classic stack (third_party/jieli-bt and the members of third_party/jieli-ble it lists in SHARED) as an A2DP sink, the
+#   phone's music mixed beside the bass (firmware/bt/) -> firmware/openpocket-bt.bin and build/bt/*.fwsc.
 set -e
+[ -n "$OP_BT" ] && OP_BLE=1
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BSP="${BSP:-$HERE/bsp}"
 TC="${JIELI_TOOLCHAIN:-$HOME/.jieli/toolchain}"
@@ -23,7 +27,8 @@ fi
 # the stack guard: on, except in the Bluetooth test image (its task stacks are outside the guard window); app.ld refuses the
 # link if the guard is on and those stacks are outside. OP_GUARD_STACK=1 with OP_BLE=1 is how that check is shown to fire.
 GUARD_STACK=1; [ -n "$OP_BLE" ] && GUARD_STACK="${OP_GUARD_STACK:-0}"
-if [ -n "$OP_BLE" ]; then O="$HERE/build-ble"; APP="$HERE/openpocket-ble.bin"; PKG="$HERE/../build/ble"; BLEDEF="-DOP_BLE_TEST=1 -I$HERE/ble"
+if [ -n "$OP_BT" ]; then O="$HERE/build-bt"; APP="$HERE/openpocket-bt.bin"; PKG="$HERE/../build/bt"; BLEDEF="-DOP_BLE_TEST=1 -DOP_BT_AUDIO=1 -I$HERE/ble -I$HERE/bt"
+elif [ -n "$OP_BLE" ]; then O="$HERE/build-ble"; APP="$HERE/openpocket-ble.bin"; PKG="$HERE/../build/ble"; BLEDEF="-DOP_BLE_TEST=1 -I$HERE/ble"
 else O="$HERE/build"; APP="$HERE/openpocket.bin"; PKG="$HERE/../docs/firmware"; BLEDEF=""; fi
 rm -rf "$O"; mkdir -p "$O"
 CC="$TC/pi32v2/bin/clang -target pi32v2"
@@ -62,7 +67,10 @@ if [ -n "$OP_BLE" ]; then
   MAPOPT="-Map $O/openpocket.map"
   # JieLi's LE controller (LLVM bitcode, Apache-2.0, third_party/jieli-ble) -> pi32v2 objects, and our context switch
   mkdir -p "$O/jl"
-  for b in "$HERE"/../third_party/jieli-ble/*/*.bc; do
+  if [ -n "$OP_BT" ]; then   # the classic members, and the shared ones (third_party/jieli-bt/SHARED)
+    BCS="$(ls "$HERE"/../third_party/jieli-bt/*/*.bc) $(grep -v '^#' "$HERE/../third_party/jieli-bt/SHARED" | sed "s|^|$HERE/../third_party/jieli-ble/|")"
+  else BCS="$(ls "$HERE"/../third_party/jieli-ble/*/*.bc)"; fi
+  for b in $BCS; do
     $CC -Os -c -x ir "$b" -o "$O/jl/$(basename "$(dirname "$b")")_$(basename "$b" .bc).o"
   done
   # v40 made memcpy and memset RAM code, out of the call range of the library's code at the end of the flash: the
@@ -87,7 +95,7 @@ RAM_DSP="px_engine_process px_engine_part px_wet_run px_wet_swap dly_block rv_bl
 # (now the fallback when the layer split cannot run), the vector unit's paths (never chosen: slower) and the C versions
 # of the hand routines (used only if a hand one fails its start-up check: the network is then too slow anyway)
 RAM_FW="a_enc a_dec a_block a_send a_collect a_commit dsp_block dsp_out dsp_load dsp_job post_job post_run dsp_pipe lp_job dsp_lp_run a_lp_post lp_split
-  fm1_alnk0_irq tn_capture fm1_cpu1_run fm1_cpu1_wait fm1_cpu1_retire a_hrun a_hwait b_ticks memcpy memset"
+  fm1_alnk0_irq tn_capture fm1_cpu1_run fm1_cpu1_wait fm1_cpu1_retire a_hrun a_hwait b_ticks memcpy memset bt_music_mix bt_cubic"
 python3 "$HERE/../tools/ramcode.py" "$O/px_dsp.o" --plain $RAM_DSP
 python3 "$HERE/../tools/ramcode.py" "$O/openpocket.o" $RAM_FW
 # a direct call between the flash code and the RAM code is out of the CPU's call range: refuse it with its name

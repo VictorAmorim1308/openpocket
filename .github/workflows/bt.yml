@@ -7,39 +7,16 @@ on:
 permissions:
   contents: read
 jobs:
-  probe:
+  image:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: The AC79 SDK's libraries at the commit third_party/jieli-ble pins (JieLi's gitee repository, Apache-2.0)
-        run: |
-          set -x
-          mkdir -p build/sdk && cd build/sdk && git init -q && git remote add origin https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git
-          git config core.sparseCheckout true
-          printf '/cpu/wl82/liba/*.a\n/LICENSE\n' > .git/info/sparse-checkout
-          git fetch --filter=blob:none --depth 1 origin 0617f4cc09685332aaf1104893718291c54ee5bb || git fetch --filter=blob:none origin release/AC79NN_SDK_V1.2.0
-          git checkout -q 0617f4cc09685332aaf1104893718291c54ee5bb
-          sha256sum cpu/wl82/liba/btctrler.a cpu/wl82/liba/btstack.a cpu/wl82/liba/cpu.a cpu/wl82/liba/lib_ccm_aes.a
-          ls cpu/wl82/liba
-      - uses: actions/upload-artifact@v4
-        with:
-          name: jieli-sdk-liba
-          path: |
-            build/sdk/cpu/wl82/liba/btstack.a
-            build/sdk/cpu/wl82/liba/btctrler.a
-            build/sdk/cpu/wl82/liba/audio_server.a
-            build/sdk/cpu/wl82/liba/cpu.a
-            build/sdk/cpu/wl82/liba/lib_sbc_eng.a
-            build/sdk/cpu/wl82/liba/crypto_toolbox_Osize.a
-            build/sdk/cpu/wl82/liba/lib_ccm_aes.a
-            build/sdk/cpu/wl82/liba/wl_rf_common.a
-            build/sdk/LICENSE
       - name: Build the container
         run: docker build --platform linux/amd64 -t opb .
-      - name: The BLE test image (baseline)
-        run: docker run --rm --platform linux/amd64 -v "$PWD:/src" -w /src -e OP_BLE=1 opb sh firmware/build.sh 2>&1 | tail -40
-      - name: Probe the classic stack's size
-        run: docker run --rm --platform linux/amd64 -v "$PWD:/src" -w /src -e SDK=/src/build/sdk opb sh tools/bt/probe.sh
+      - name: The Bluetooth audio image (OP_BT=1)
+        run: set -o pipefail; docker run --rm --platform linux/amd64 -v "$PWD:/src" -w /src -e OP_BT=1 opb sh firmware/build.sh 2>&1 | tail -80
+      - name: The music path on the PC
+        run: docker run --rm --platform linux/amd64 -v "$PWD:/src" -w /src opb sh -c "cc -O2 -Wall -Wno-unused-function -o /tmp/t tests/test_bt_music.c -lm && /tmp/t"
   sdk-branch:
     runs-on: ubuntu-24.04
     permissions:
