@@ -116,6 +116,8 @@ node tests/test_ble_sources.mjs
 echo "== Bluetooth test image status codes"
 $CC -O1 -Wall -Wno-unused-function -o build/ble_status tests/test_ble_status.c && build/ble_status
 $CC -O1 -Wall -Wno-unused-function -o build/ble_vm tests/test_ble_vm.c && build/ble_vm
+echo "== Bluetooth audio: SBC, the music ring and its mix (firmware/bt/bt_music.h)"
+$CC -O2 -Wall -Wno-unused-function -o build/bt_music tests/test_bt_music.c -lm && build/bt_music
 echo "== Chocolate Plus files (tools/chocolate/fcp.py)"
 python3 tests/test_fcp.py
 echo "== pedal skin input"

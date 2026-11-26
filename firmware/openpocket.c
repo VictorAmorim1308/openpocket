@@ -532,6 +532,10 @@ static const int8_t QDEC[16] = {0,-1,1,0, 1,0,0,-1, -1,0,0,1, 0,1,-1,0};
 #include "audio_probe.h"
 #else
 #include "px_cacheram.h"     /* v37: data-cache ways as RAM (melodee's routine): the NAM network's vector-unit buffers */
+#if OP_BT_AUDIO
+#define BT_RAM __attribute__((section(".pool.tail.bt_ring")))
+#include "bt/bt_music.h"    /* the music: SBC -> ring -> mixed in a_send */
+#endif
 #include "px_audio.h"
 #endif
 
@@ -626,11 +630,21 @@ static void ed_diag_line(uint32_t i, char *out);
 #if OP_BLE_TEST             /* the Bluetooth MIDI test image (docs/BLE-TEST.md): make ble */
 #include "ble/ble_os.c"
 #include "ble/ble_libc.c"
-#include "ble/ble_cfg.c"
 #include "ble/ble_rf.c"
+#if OP_BT_AUDIO             /* the Bluetooth audio image (OP_BT=1): JieLi's classic stack, the A2DP sink (firmware/bt/) */
+#include "bt/bt_cfg.c"
+#if !BT_NO_GEN_STUBS
+#include "bt/bt_stubs_gen.c"
+#endif
+#include "bt/bt_lowpower.c"
+#include "bt/bt_a2dp.c"
+#include "ble/ble_test.c"
+#else
+#include "ble/ble_cfg.c"
 #include "ble/ble_stubs.c"
 #include "ble/ble_test.c"
 #include "ble/ble_midi.c"
+#endif
 #include "ble/ble_diag.h"
 static void ed_diag_line(uint32_t i, char *out)
 {
@@ -677,7 +691,11 @@ static void app_main(void)
     lcd_rect(0,0,240,240,UI_BG);
     ft_box(0, 98, 240, "OPENPOCKET", &FT_MD, UI_ACC, UI_BG, 1);
 #if OP_BLE_TEST
+#if OP_BT_AUDIO
+    ft_box(0, 126, 240, OP_VERSION " BT AUDIO TEST", &FT_SM, UI_DIM, UI_BG, 1);
+#else
     ft_box(0, 126, 240, OP_VERSION " BLE TEST", &FT_SM, UI_DIM, UI_BG, 1);
+#endif
 #else
     ft_box(0, 126, 240, OP_VERSION, &FT_SM, UI_DIM, UI_BG, 1);
 #endif

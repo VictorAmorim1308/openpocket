@@ -49,12 +49,13 @@ def main():
     out += [" */", "#pragma once",
             "static const char *const PXN_FNAME[PX_NAM_NFACT] = {%s};" % ", ".join('"%s"' % n for n in names),
             "static const float PXN_FLVL[PX_NAM_NFACT] = {%s};" % ", ".join("%.2ff" % v for v in lv),
-            "static const float PXN_FW[PX_NAM_NFACT][PXN_NW] = {"]
+            "#if !PX_NAM_NO_FACTORY", "static const float PXN_FW[PX_NAM_NFACT][PXN_NW] = {"]
     for w in ws:
         vals = [cfloat(v) for v in w]
         lines = [", ".join(vals[i:i + 10]) for i in range(0, len(vals), 10)]
         out.append("  {" + ",\n   ".join(lines) + "},")
     out.append("};")
+    out.append("#endif")
     open(os.path.join(ROOT, "engine", "px_nam_factory.h"), "w").write("\n".join(out) + "\n")
     print("engine/px_nam_factory.h: %d models" % len(ws))
 

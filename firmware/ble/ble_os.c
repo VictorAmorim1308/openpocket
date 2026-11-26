@@ -32,9 +32,15 @@ int cpu_irq_disabled(void) { return !(fm1_icfg() & 0x200u); }   /* icfg bit 9: t
 int cpu_in_irq(void) { return 0; }
 
 /* ---- heap: first fit with coalescing on free, 8-byte aligned, one static pool */
+#if OP_BT_AUDIO                 /* the classic stack (A2DP): its packets and links; in the pool's free end (app.ld .pool.tail) */
+#define HEAP_BYTES (40u * 1024u)
+#define BLE_HEAP_SECTION __attribute__((section(".pool.tail.ble_heap")))
+#else
 #define HEAP_BYTES (24u * 1024u)
+#define BLE_HEAP_SECTION
+#endif
 typedef struct blk { uint32_t size; uint32_t used; } blk_t;       /* size includes this header */
-static uint8_t heap[HEAP_BYTES] __attribute__((aligned(8)));
+static uint8_t heap[HEAP_BYTES] __attribute__((aligned(8))) BLE_HEAP_SECTION;
 static int heap_ready;
 static uint32_t heap_free_bytes, heap_min_free;
 
