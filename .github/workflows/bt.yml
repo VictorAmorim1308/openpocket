@@ -11,11 +11,29 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: The AC79 SDK's libraries (Apache-2.0; a GitHub mirror of JieLi's gitee repository)
+      - name: The AC79 SDK's libraries at the commit third_party/jieli-ble pins (JieLi's gitee repository, Apache-2.0)
         run: |
-          git clone --depth 1 --filter=blob:none --sparse https://github.com/amitv87/fw-AC79_AIoT_SDK.git build/sdk
-          git -C build/sdk sparse-checkout set --no-cone '/cpu/wl82/liba/btstack.a' '/cpu/wl82/liba/btctrler.a' '/cpu/wl82/liba/audio_server.a' '/cpu/wl82/liba/cpu.a' '/cpu/wl82/liba/crypto_toolbox_Osize.a' '/cpu/wl82/liba/lib_sbc_eng.a'
-          ls -la build/sdk/cpu/wl82/liba
+          set -x
+          mkdir -p build/sdk && cd build/sdk && git init -q && git remote add origin https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git
+          git config core.sparseCheckout true
+          printf '/cpu/wl82/liba/*.a\n/LICENSE\n' > .git/info/sparse-checkout
+          git fetch --filter=blob:none --depth 1 origin 0617f4cc09685332aaf1104893718291c54ee5bb || git fetch --filter=blob:none origin release/AC79NN_SDK_V1.2.0
+          git checkout -q 0617f4cc09685332aaf1104893718291c54ee5bb
+          sha256sum cpu/wl82/liba/btctrler.a cpu/wl82/liba/btstack.a cpu/wl82/liba/cpu.a cpu/wl82/liba/lib_ccm_aes.a
+          ls cpu/wl82/liba
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jieli-sdk-liba
+          path: |
+            build/sdk/cpu/wl82/liba/btstack.a
+            build/sdk/cpu/wl82/liba/btctrler.a
+            build/sdk/cpu/wl82/liba/audio_server.a
+            build/sdk/cpu/wl82/liba/cpu.a
+            build/sdk/cpu/wl82/liba/lib_sbc_eng.a
+            build/sdk/cpu/wl82/liba/crypto_toolbox_Osize.a
+            build/sdk/cpu/wl82/liba/lib_ccm_aes.a
+            build/sdk/cpu/wl82/liba/wl_rf_common.a
+            build/sdk/LICENSE
       - name: Build the container
         run: docker build --platform linux/amd64 -t opb .
       - name: Probe the classic stack's size
