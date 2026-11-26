@@ -1,0 +1,22 @@
+name: bt
+# OpenPocket Bass: the Bluetooth audio work (branch bt): what JieLi's classic stack costs, then the test image
+on:
+  push:
+    branches: [bt]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: The AC79 SDK's libraries (Apache-2.0; a GitHub mirror of JieLi's gitee repository)
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/amitv87/fw-AC79_AIoT_SDK.git build/sdk
+          git -C build/sdk sparse-checkout set --no-cone '/cpu/wl82/liba/btstack.a' '/cpu/wl82/liba/btctrler.a' '/cpu/wl82/liba/audio_server.a' '/cpu/wl82/liba/cpu.a' '/cpu/wl82/liba/crypto_toolbox_Osize.a' '/cpu/wl82/liba/lib_sbc_eng.a'
+          ls -la build/sdk/cpu/wl82/liba
+      - name: Build the container
+        run: docker build --platform linux/amd64 -t opb .
+      - name: Probe the classic stack's size
+        run: docker run --rm --platform linux/amd64 -v "$PWD:/src" -w /src -e SDK=/src/build/sdk opb sh tools/bt/probe.sh
