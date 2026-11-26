@@ -23,3 +23,4 @@ LINK="$TC/common/bin/llvm-link"
 echo "== LTO: one module"
 ins=""; while read -r m; do ins="$ins $W/x/$m"; done < /src/tools/bt/members.txt
 if $LINK $ins -o "$W/all.bc" 2>"$W/lerr"; then $CC -Os -c -x ir "$W/all.bc" -o "$W/all.o" && python3 /src/tools/bt/sizes.py "$OD" "$W/all.o"; else head -c 3000 "$W/lerr"; fi
+echo "== undefined in the module"; "$TC/pi32v2/bin/nm" -u "$W/all.o" 2>/dev/null | awk '{print $NF}' | sort -u | tr '\n' ' '; echo

@@ -15,6 +15,6 @@ for o in objs:
         elif "TEXT" in kind or "DATA" in kind: t += size
     rows.append((t, d, b, o.split("/")[-1]))
 rows.sort(reverse=True)
-for r in rows[:25]: print("%8d %6d %6d  %s" % r)
+for r in rows: print("%8d %6d %6d  %s" % r)
 T = [sum(r[i] for r in rows) for i in range(3)]
 print("TOTAL flash(code+const) %d  data %d  bss %d  -> flash %d, RAM %d" % (T[0], T[1], T[2], T[0] + T[1], T[1] + T[2]))
