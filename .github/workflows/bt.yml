@@ -15,6 +15,9 @@ jobs:
         run: docker build --platform linux/amd64 -t opb .
       - name: The Bluetooth audio image (OP_BT=1)
         run: set -o pipefail; docker run --rm --platform linux/amd64 -v "$PWD:/src" -w /src -e OP_BT=1 opb sh firmware/build.sh 2>&1 | tail -80
+      - name: What takes the flash
+        if: always()
+        run: docker run --rm --platform linux/amd64 -v "$PWD:/src" -w /src opb sh tools/bt/sizes_fw.sh
       - name: The music path on the PC
         run: docker run --rm --platform linux/amd64 -v "$PWD:/src" -w /src opb sh -c "cc -O2 -Wall -Wno-unused-function -o /tmp/t tests/test_bt_music.c -lm && /tmp/t"
   sdk-branch:
