@@ -47,7 +47,7 @@ jobs:
     steps:
       - name: Fetch
         run: |
-          if git ls-remote --exit-code https://github.com/${{ github.repository }}.git refs/heads/bt-sdk >/dev/null; then echo "bt-sdk exists"; exit 0; fi
+          if git ls-remote --exit-code https://github.com/${{ github.repository }}.git refs/heads/bt-sdk2 >/dev/null; then echo "bt-sdk2 exists"; exit 0; fi
           touch /tmp/need
           mkdir sdk && cd sdk && git init -q && git remote add origin https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git
           git config core.sparseCheckout true
@@ -58,10 +58,10 @@ jobs:
       - name: Push to bt-sdk
         run: |
           [ -f /tmp/need ] || exit 0
-          mkdir out && cd out && git init -q -b bt-sdk
-          mkdir -p liba && cp ../sdk/cpu/wl82/liba/btstack.a ../sdk/cpu/wl82/liba/btctrler.a ../sdk/cpu/wl82/liba/audio_server.a ../sdk/cpu/wl82/liba/cpu.a ../sdk/cpu/wl82/liba/lib_sbc_eng.a ../sdk/cpu/wl82/liba/crypto_toolbox_Osize.a ../sdk/cpu/wl82/liba/lib_ccm_aes.a ../sdk/cpu/wl82/liba/wl_rf_common.a liba/ 2>&1 || true
+          mkdir out && cd out && git init -q -b bt-sdk2
+          mkdir -p liba && cp ../sdk/cpu/wl82/liba/btstack.a ../sdk/cpu/wl82/liba/btctrler.a ../sdk/cpu/wl82/liba/audio_server.a ../sdk/cpu/wl82/liba/cpu.a ../sdk/cpu/wl82/liba/lib_sbc_eng.a ../sdk/cpu/wl82/liba/crypto_toolbox_Osize.a ../sdk/cpu/wl82/liba/lib_ccm_aes.a ../sdk/cpu/wl82/liba/wl_rf_common.a ../sdk/cpu/wl82/liba/system.a ../sdk/cpu/wl82/liba/common_lib.a liba/ 2>&1 || true
           cp -r ../sdk/include_lib ../sdk/apps . ; cp ../sdk/LICENSE LICENSE-JieLi-Apache-2.0
           echo "JieLi fw-AC79_AIoT_SDK at 0617f4cc09685332aaf1104893718291c54ee5bb (gitee), unchanged: libraries, headers, config. Apache-2.0." > README.md
           sha256sum liba/* >> README.md
           git add -A && git -c user.name=ci -c user.email=ci@localhost commit -qm "AC79 SDK at 0617f4cc (gitee): the Bluetooth libraries"
-          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" bt-sdk
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" bt-sdk2
