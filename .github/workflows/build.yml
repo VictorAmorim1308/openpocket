@@ -21,6 +21,9 @@ jobs:
             docs/firmware/*.fwsc
             docs/firmware/manifest.json
             build/SHA256SUMS
+      # OpenPocket Bass: the Bluetooth audio test image, offered only through the installer's ?channel=bt-test link
+      - name: Build the Bluetooth audio test channel (never the installer default)
+        run: node tools/op.mjs package-bt
       # OpenPocket Bass: the installer and the editor (docs/) with this build's packages, for GitHub Pages
       - uses: actions/upload-pages-artifact@v3
         if: github.ref == 'refs/heads/bass' || github.ref == 'refs/heads/main'

@@ -108,3 +108,8 @@ As páginas do AMP e do EQ mostram a curva de verdade (as mesmas contas dos filt
   **frequência** (o ponto anda), o PUSH de novo muda o **ganho** (o ponto sobe ou desce), o PUSH mais uma vez volta.
   BASS 40–250 Hz (padrão 100), MID 200–1800 Hz (600), TREBLE 1,5–6 kHz (3 kHz), todos ±12 dB.
 - **EQ:** o sino do médio anda com a frequência e a área sombreada abre ou fecha com o Q; os cinco valores ficam embaixo.
+
+## Bluetooth audio (test image)
+
+Music from a phone through the pedal, beside the bass: a separate test image, installed from the installer's
+`?channel=bt-test` link. See [BT-AUDIO.md](BT-AUDIO.md).

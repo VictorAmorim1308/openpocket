@@ -76,4 +76,8 @@ void ble_test_adv_line(char *out)
 }
 
 /* the line the status area scrolls, and the log channel sends (out: 96 bytes) */
+#if OP_BT_AUDIO   /* the audio image: VISIBLE / CONNECTED / PLAYING and the music's counters (bt_a2dp.c) */
+void ble_test_line(char *out) { if (ble_state == BLE_ADV) ble_midi_line(out); else ble_status_full(out); }
+#else
 void ble_test_line(char *out) { if (ble_state == BLE_ADV) ble_test_adv_line(out); else ble_status_full(out); }
+#endif

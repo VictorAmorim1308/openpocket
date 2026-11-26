@@ -45,10 +45,12 @@ const uint8_t *bt_get_mac_addr(void)
     return a;
 }
 
-static void bt_vol_set(int vol)                  /* the phone moved its volume: 0..127 */
+#define BT_MUSIC_PEDAL 80                       /* the pedal's own music level (0..100), until it has a setting: x0.64 */
+static void bt_vol_set(int vol)                  /* the phone moved its volume (AVRCP absolute volume): 0..127 */
 {
     if (vol < 0 || vol > 127) return;
     bt_phone_vol = vol * 100 / 127;
+    bt_music_level(bt_phone_vol, BT_MUSIC_PEDAL);
 }
 static int bt_vol_get(void) { return bt_phone_vol * 127 / 100; }
 
@@ -64,6 +66,7 @@ static void bt_pre_init(void)
     __set_simple_pair_flag(1);                   /* Secure Simple Pairing, no PIN */
     __set_simple_pair_param(3, 0, 2);            /* NoInputNoOutput, no OOB, the SDK's authentication requirements */
     music_vol_change_handle_register(bt_vol_set, bt_vol_get);
+    bt_music_level(bt_phone_vol, BT_MUSIC_PEDAL);
 }
 
 static void bt_visible(int on)

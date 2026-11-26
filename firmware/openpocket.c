@@ -691,7 +691,11 @@ static void app_main(void)
     lcd_rect(0,0,240,240,UI_BG);
     ft_box(0, 98, 240, "OPENPOCKET", &FT_MD, UI_ACC, UI_BG, 1);
 #if OP_BLE_TEST
+#if OP_BT_AUDIO
+    ft_box(0, 126, 240, OP_VERSION " BT AUDIO TEST", &FT_SM, UI_DIM, UI_BG, 1);
+#else
     ft_box(0, 126, 240, OP_VERSION " BLE TEST", &FT_SM, UI_DIM, UI_BG, 1);
+#endif
 #else
     ft_box(0, 126, 240, OP_VERSION, &FT_SM, UI_DIM, UI_BG, 1);
 #endif

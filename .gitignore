@@ -3,6 +3,8 @@ firmware/build/
 firmware/openpocket.bin
 firmware/openpocket-*.bin
 docs/firmware/midi-test/
+docs/firmware/bt-test/
+firmware/build-bt/
 firmware/build-ble/
 firmware/openpocket-ble.bin
 docs/firmware/*.fwsc

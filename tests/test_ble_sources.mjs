@@ -19,3 +19,17 @@ for (const f of listed) {
 }
 assert.equal(readFileSync(join(dir, "LICENSE-JieLi-Apache-2.0"), "utf8"), readFileSync(join(repo, "firmware/sdk/LICENSE-JieLi-Apache-2.0"), "utf8"), "the licence text is JieLi's");
 console.log(`ble sources: ${listed.length} objects ok`);
+
+// the Bluetooth audio image's classic members (third_party/jieli-bt, OP_BT=1): the same checks, and SHARED names only
+// files of ../jieli-ble that exist
+{
+  const bt = join(repo, "third_party/jieli-bt");
+  const list = readFileSync(join(bt, "MEMBERS"), "utf8").split("\n").filter((l) => l && !l.startsWith("#")).map((l) => l.split("\t")[2]);
+  const disk = ["btctrler", "btstack", "crypto", "sbc", "system"].flatMap((d) => readdirSync(join(bt, d)).map((f) => `${d}/${f}`));
+  assert.deepEqual([...list].sort(), disk.sort(), "jieli-bt: MEMBERS lists exactly the objects in the directory");
+  for (const f of list) assert.deepEqual([...readFileSync(join(bt, f)).subarray(0, 4)], [0x42, 0x43, 0xc0, 0xde], `${f} is LLVM bitcode`);
+  const shared = readFileSync(join(bt, "SHARED"), "utf8").split("\n").filter((l) => l && !l.startsWith("#"));
+  for (const f of shared) assert.ok(listed.includes(f), `SHARED: ${f} is one of ../jieli-ble's objects`);
+  assert.equal(readFileSync(join(bt, "LICENSE-JieLi-Apache-2.0"), "utf8"), readFileSync(join(repo, "firmware/sdk/LICENSE-JieLi-Apache-2.0"), "utf8"));
+  console.log(`bt sources: ${list.length} objects and ${shared.length} shared ok`);
+}
