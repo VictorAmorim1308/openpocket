@@ -3,6 +3,7 @@
 // files this browser keeps for them (docs/pxlib.js), and TONE3000 (docs/pxt3k.js). The two kinds of slot share
 // everything here but how a file is read and sent.
 
+import { knob, isBipolar } from "./edknob.js";
 import { app, $, h, fill, icon, on, emit, slotName, say, task, sleep, confirmDialog, promptDialog, pickDialog, menu, plural, dropTarget, act, blk, typeOf } from "./edcore.js";
 import { writeSlots, entry, selectPreset } from "./edpresets.js";
 import { parseNam, levelTrim, packModel, readDi } from "./pxnam.js";
@@ -329,9 +330,9 @@ function trialControls(kind) {
     const id = `try${kind}${kk}${lv ? "l" : ""}`, v = p.p[b][kk];
     const show = (x) => lv ? `${(x - 50) * 0.24 > 0 ? "+" : ""}${((x - 50) * 0.24).toFixed(1)} dB` : (param.texts && param.texts[x]) || String(x);
     const out = h("output", { class: "val", for: id, text: show(v) });
-    const ctl = h("input", { type: "range", id, min: 0, max: 100, step: 1, value: v, style: `--p:${v}%`,
-      oninput: () => { out.textContent = show(+ctl.value); ctl.style.setProperty("--p", `${ctl.value}%`); sendParam(b, kk, +ctl.value); } });
-    return h("div", { class: "prm" }, h("label", { for: id, text: param.name }), ctl, out);
+    const ctl = h("input", { type: "range", id, min: 0, max: 100, step: 1, value: v, "aria-label": param.name,
+      oninput: () => { out.textContent = show(+ctl.value); sendParam(b, kk, +ctl.value); } });
+    return h("div", { class: "prm kn" }, h("label", { for: id, text: param.name }), knob(ctl, { bipolar: lv || isBipolar(param) }), h("div", { class: "kv" }, out));
   }));
 }
 function trialPanel(kind) {

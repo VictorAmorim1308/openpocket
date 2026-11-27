@@ -2,6 +2,7 @@
 // OpenPocket web editor: the current sound. Its name and what can be done with it, the signal chain (the order, what is
 // on), and the block editor (type, settings). Every change plays at once on the pedal; a change made on the pedal shows here.
 
+import { knob, isBipolar } from "./edknob.js";
 import { app, $, h, icon, on, emit, blk, typeOf, choices, act, menu, slotName } from "./edcore.js";
 import { save, saveAs, revert, exportOne, setCompare, comparing, duplicate, moveTo, restoreFactory } from "./edpresets.js";
 import { knobIndex, indexKnob, KINDS } from "./pxlib.js";
@@ -174,6 +175,13 @@ function paramChoices(b, t, k, param) {
 }
 const optionOf = (opts, v) => opts.find((o) => o.index !== undefined ? knobIndex(v, opts.length) === o.index : v >= o.lo && v <= o.hi) || opts[0];
 
+// a setting with a range of values: a knob, its name, its value between a one-step - and + (edknob.js)
+const knobsOf = (box) => box.querySelector(":scope > .knobs") || box.appendChild(h("div", { class: "knobs" }));
+function knobCell(name, id, ctl, step, bipolar) {
+  const cell = h("div", { class: "prm kn" }, h("label", { for: id, text: name }));
+  cell.append(knob(ctl, { bipolar }), h("div", { class: "kv" }, step(-1), h("output", { class: "val", for: id }), step(1)));
+  return cell;
+}
 function renderPage(fromPush) {
   const b = app.focus, B = blk(b), p = app.st.preset, T = typeOf(p, b), is = !!p.on[b];
   $("block").style.setProperty("--c", B.color);
@@ -218,27 +226,22 @@ function renderPage(fromPush) {
         if (groups) for (const [name, list] of groups) { if (list.length) ctl.append(h("optgroup", { label: name }, list.map(opt))); }
         else ctl.append(...opts.map(opt));
       } else {
-        ctl = h("input", { type: "range", id, min: 0, max: 100, step: 1 });
+        ctl = h("input", { type: "range", id, min: 0, max: 100, step: 1, "aria-label": param.name });
         ctl.oninput = () => { showVal(k); sendParam(b, k, +ctl.value); renderGraph(); };
-        ctl.onpointerdown = () => { ctl.dataset.held = "1"; };
-        ctl.onpointerup = ctl.onpointercancel = () => { delete ctl.dataset.held; };
       }
       const step = (d) => h("button", { type: "button", class: "nudge", tabIndex: -1, "aria-label": `${param.name} ${d < 0 ? "down" : "up"} one step`,
         onclick: () => { const v = Math.max(0, Math.min(100, +ctl.value + d)); ctl.value = v; showVal(k); sendParam(b, k, v); renderGraph(); } }, icon(d < 0 ? "minus" : "plus"));
-      const range = ctl.type === "range";
-      box.append(h("div", { class: `prm${range ? "" : " one"}` },
-        h("label", { for: range || ctl.tagName === "SELECT" ? id : null, text: param.name }),
-        range && step(-1), ctl, range && step(1),
-        range && h("output", { class: "val", for: id })));
+      if (ctl.type === "range") knobsOf(box).append(knobCell(param.name, id, ctl, step, isBipolar(param)));
+      else box.append(h("div", { class: "prm one" }, h("label", { for: ctl.tagName === "SELECT" ? id : null, text: param.name }), ctl));
     });
     if (!T.params.length) box.append(h("p", { class: "dim", text: "This type has no settings." }));
     if (ampLevel(b)) {   // OpenPocket Bass: the AMP's LEVEL, kept in the SFX block (not in the chain)
       AMP_X.forEach(([name, k]) => {
-        const ctl = h("input", { type: "range", id: `pampx${k}`, min: 0, max: 100, step: 1 });
+        const ctl = h("input", { type: "range", id: `pampx${k}`, min: 0, max: 100, step: 1, "aria-label": name });
         ctl.oninput = () => { showAmpX(k); sendParam(SFX, k, +ctl.value); };
         const step = (d) => h("button", { type: "button", class: "nudge", tabIndex: -1, "aria-label": `${name} ${d < 0 ? "down" : "up"} one step`,
           onclick: () => { const v = Math.max(0, Math.min(100, +ctl.value + d)); ctl.value = v; showAmpX(k); sendParam(SFX, k, v); } }, icon(d < 0 ? "minus" : "plus"));
-        box.append(h("div", { class: "prm" }, h("label", { for: `pampx${k}`, text: name }), step(-1), ctl, step(1), h("output", { class: "val", for: `pampx${k}` })));
+        knobsOf(box).append(knobCell(name, `pampx${k}`, ctl, step, true));
       });
     }
     box.dataset.sig = sig;
@@ -261,7 +264,8 @@ function showAmpX(k) {
   const c = $(`pampx${k}`); if (!c) return;
   const v = +c.value, db = (v - 50) * 24 / 100;
   c.style.setProperty("--p", `${v}%`);
-  c.parentElement.querySelector(".val").textContent = `${db > 0 ? "+" : ""}${db.toFixed(1)} dB`;
+  if (c._knob) c._knob();
+  c.closest(".prm").querySelector(".val").textContent = `${db > 0 ? "+" : ""}${db.toFixed(1)} dB`;
 }
 // ---- OpenPocket Bass: the EQ's curve, as the pedal draws it (engine/px_dsp.c eq_design; 30 Hz..8 kHz, +-12 dB) ----
 const EQFS = 44100;
@@ -322,8 +326,9 @@ function showVal(k) {
   if (!c || !param) return;
   if (c.type === "range") {
     const v = +c.value, t = param.texts && param.texts[v];
-    const out = c.parentElement.querySelector(".val");
+    const out = c.closest(".prm").querySelector(".val");
     out.textContent = t || String(v);
+    if (c._knob) c._knob();
     c.style.setProperty("--p", `${v}%`);
     c.setAttribute("aria-valuetext", t || String(v));
   } else if (c.classList.contains("seg")) {

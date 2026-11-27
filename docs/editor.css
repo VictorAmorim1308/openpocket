@@ -612,9 +612,7 @@ a.tone-u[href] { text-decoration: underline; }
 .trial.live .trial-dot { background: var(--ok); box-shadow: 0 0 0 0 color-mix(in oklch, var(--ok) 60%, transparent); animation: beat 1.6s var(--ease) infinite; }
 @keyframes beat { 0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--ok) 55%, transparent); } 70%, 100% { box-shadow: 0 0 0 9px transparent; } }
 @media (prefers-reduced-motion: reduce) { .trial.live .trial-dot { animation: none; } }
-.trial-ctl { display: grid; gap: 2px; }
-.trial-ctl .prm { grid-template-columns: 96px minmax(0, 1fr) 64px; }
-.trial-ctl input[type=range] { --track: var(--c); }
+.trial-ctl { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 12px 6px; }
 .trial-f { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-block-start: 12px; border-block-start: 1px solid color-mix(in oklch, var(--c) 25%, var(--line-soft)); }
 .trial-name { position: relative; flex: 1 1 140px; display: flex; }
 .trial-name input { flex: 1; text-transform: uppercase; font: inherit; font-weight: 700; letter-spacing: 0.04em; padding: 8px 48px 8px 10px; border-radius: var(--r);
@@ -623,3 +621,26 @@ a.tone-u[href] { text-decoration: underline; }
 .trial-f select { flex: 0 1 170px; font: inherit; padding: 8px 10px; border-radius: var(--r); border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
 .trial-f .btn.primary { flex: none; }
 @media (max-width: 560px) { .cells { grid-template-columns: repeat(3, minmax(0, 1fr)); } .trial-f select, .trial-f .btn.primary { flex: 1 1 100%; } }
+
+/* ---- knobs (edknob.js): the settings with a range, drawn and turned like the pedal's own ---- */
+.knobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 16px 6px; padding-block: 10px 4px; }
+.prm.kn { display: flex; flex-direction: column; align-items: center; gap: 2px; min-block-size: 0; }
+.prm.kn > label { order: 2; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.02em; color: var(--dim); text-align: center; white-space: normal; line-height: 1.2; }
+.prm.kn > .knob { order: 1; }
+.prm.kn > .kv { order: 3; display: flex; align-items: center; gap: 0; }
+.kv .val { min-inline-size: 5.5ch; text-align: center; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
+.kv .nudge { inline-size: 22px; block-size: 22px; min-block-size: 0; padding: 0; border: 0; background: none; color: var(--faint); opacity: 0; transition: opacity 0.15s; }
+.kv .nudge .ic { inline-size: 12px; block-size: 12px; }
+.prm.kn:hover .nudge, .kv .nudge:focus-visible { opacity: 1; }
+@media (hover: none) { .kv .nudge { opacity: 1; } }
+.knob { position: relative; inline-size: 64px; block-size: 64px; cursor: ns-resize; touch-action: none; user-select: none; }
+.knob svg { display: block; inline-size: 100%; block-size: 100%; overflow: visible; }
+.k-track, .k-val { fill: none; stroke-width: 4; stroke-linecap: round; }
+.k-track { stroke: oklch(0.33 0.01 150); }
+.k-val { stroke: var(--c); }
+.k-cap { fill: oklch(0.29 0.009 150); stroke: oklch(0.36 0.01 150); stroke-width: 1; }
+.k-tick { stroke: var(--ink); stroke-width: 2.5; stroke-linecap: round; }
+.knob.turning .k-cap, .knob:hover .k-cap { fill: oklch(0.32 0.01 150); }
+.knob:has(.knob-in:focus-visible) .k-cap { stroke: var(--acc); stroke-width: 2; }
+.knob-in { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+.block.off .k-val { stroke: var(--faint); }

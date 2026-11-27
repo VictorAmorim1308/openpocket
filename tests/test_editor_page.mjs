@@ -98,7 +98,12 @@ const go = (view) => page.click(`#tabs [data-go="${view}"]`);
 // an option by its text, spaces counted loosely: an option's label has its runs of spaces collapsed, and Playwright
 // versions differ in whether { label } compares it so
 const pickOpt = async (sel, re) => page.selectOption(sel, await page.$$eval(`${sel} option`, (o, src) => (o.find((x) => new RegExp(src).test(x.textContent)) || {}).value, re.source));
-const slide = async (sel, frac) => { const b = await page.locator(sel).boundingBox(); await page.mouse.click(b.x + b.width * frac, b.y + b.height / 2); await sleep(300); };
+// (OpenPocket Bass: a setting is a knob, edknob.js: dragged up from its lowest; the input under it holds the value)
+const slide = async (sel, frac) => {
+  await page.locator(sel).evaluate((e) => { e.value = 0; e._knob && e._knob(); });
+  const b = await page.locator(sel).locator("xpath=..").boundingBox(), x = b.x + b.width / 2, y = b.y + b.height / 2;
+  await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x, y - 160 * frac, { steps: 8 }); await page.mouse.up(); await sleep(300);
+};
 
 // ---- first run, no pedal, then the pedal appears ----
 await page.goto(url);
