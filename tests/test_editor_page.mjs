@@ -393,11 +393,11 @@ const namFile = (seed, name = "") => {
     kernel_sizes: KS, dilations: DS, activation: KS.map(() => ({ type: "LeakyReLU", negative_slope: 0.01 })),
     head1x1: { active: false }, layer1x1: { active: true }, gating_mode: KS.map(() => "none") }] } });
 };
-const srow = (kind, slot) => page.locator(`#${kind}list .srow[data-slot="${slot}"]`);
-const free = (kind, slot) => page.locator(`#${kind}list .free [data-slot="${slot}"]`);
+const srow = (kind, slot) => page.locator(`#${kind}list .cell.full[data-slot="${slot}"]`);
+const free = (kind, slot) => page.locator(`#${kind}list .cell.empty[data-slot="${slot}"]`);
 {
   await go("models");
-  ok(await page.locator("#namlist .free .slot").count() === 16 && /0 of 16 slots used/.test(await text("#namcap")), "Models: the 16 user slots, all empty, and how many are used");
+  ok(await page.locator("#namlist .cell.empty").count() === 16 && /^0\/16$/.test((await text("#namcap")).trim()), "Models: the 16 user slots, all empty, and how many are used");
   ok(/12 factory models/.test(await text("#nam .factory summary")), "the 12 factory models, apart");
   await shot("editor_6_models_empty.png");
   const fn = join(TMP, "Page Amp.nam"), fb = join(TMP, "Second.nam"), fa1 = join(TMP, "Old A1.nam");
@@ -408,8 +408,8 @@ const free = (kind, slot) => page.locator(`#${kind}list .free [data-slot="${slot
   ok(ch.isMultiple(), "Add .nam files takes several files at once");
   await ch.setFiles([fn, fa1, fb]);
   ok(await toast(/2 captures on the pedal, 1 not added/, 30000), "three files: two captures sent to the first free slots, the A1 file refused");
-  ok((await srow("nam", 0).textContent()).includes("PAGE AMP") && (await srow("nam", 1).textContent()).includes("SECOND") && /2 of 16 slots used/.test(await text("#namcap")), "U01 PAGE AMP, U02 SECOND");
-  ok(/not an A2 model/i.test(await text("#nam .queue")) && /Page Amp\.nam/.test(await srow("nam", 0).textContent()), "the list says why the A1 file was refused; each slot says which file it came from");
+  ok((await srow("nam", 0).textContent()).includes("PAGE AMP") && (await srow("nam", 1).textContent()).includes("SECOND") && /^2\/16$/.test((await text("#namcap")).trim()), "U01 PAGE AMP, U02 SECOND");
+  ok(/not an A2 model/i.test(await text("#nam .queue")) && /Page Amp\.nam/.test(await srow("nam", 0).getAttribute("title")), "the list says why the A1 file was refused; each slot says which file it came from");
   ok((await pedalState()).writesOk, "the flash was written only inside the preset store and the model slots");
   await shot("editor_6_nam.png");
   // a preset that plays U01
@@ -426,7 +426,7 @@ const free = (kind, slot) => page.locator(`#${kind}list .free [data-slot="${slot
   await toast(/Saved as/);
   const user = (await pedalState()).slot;
   await go("models");
-  await page.waitForFunction(() => /1 preset/.test(document.querySelector('#namlist .srow[data-slot="0"]').textContent), null, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(() => /1 preset/.test(document.querySelector('#namlist .cell.full[data-slot="0"]')?.textContent || ""), null, { timeout: 5000 }).catch(() => {});
   ok(/1 preset/.test(await srow("nam", 0).textContent()) && /Not used/.test(await srow("nam", 1).textContent()), "U01 is used by 1 preset, U02 by none");
   // move U01 to U05: the preset follows
   await clearToasts();
@@ -477,7 +477,7 @@ const free = (kind, slot) => page.locator(`#${kind}list .free [data-slot="${slot
   await clearToasts();
   await page.locator("#namlib .srow", { hasText: "MY PLEXI" }).locator("button", { hasText: "Send to the pedal" }).click();
   ok(await toast(/MY PLEXI is in U02/, 30000), "Send to the pedal: back from the library into the slot it left");
-  await page.waitForFunction(() => /1 preset/.test(document.querySelector('#namlist .srow[data-slot="1"]')?.textContent || ""), null, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(() => /1 preset/.test(document.querySelector('#namlist .cell.full[data-slot="1"]')?.textContent || ""), null, { timeout: 5000 }).catch(() => {});
   ok(/1 preset/.test(await srow("nam", 1).textContent()) && !/point to an empty slot/.test(await text("#namlist")), "the preset that named U02 plays the capture again: no warning left");
   // a library kept across a reload of the page
   ok(await page.evaluate(async () => { const r = indexedDB.open("openpocket-library"); const db = await new Promise((res) => { r.onsuccess = () => res(r.result); }); const n = await new Promise((res) => { const q = db.transaction("files").objectStore("files").count(); q.onsuccess = () => res(q.result); }); db.close(); return n; }) === 2, "the library holds the two captures in the browser's own storage");
@@ -493,12 +493,12 @@ const free = (kind, slot) => page.locator(`#${kind}list .free [data-slot="${slot
   await ch.setFiles(fw);
   // (OpenPocket Bass: an empty slot's chip opens the file to try: it plays from the pedal's memory, nothing written, then Save puts it in the slot)
   ok(await toast(/GREEN 412 plays on the pedal now/, 20000), "a WAV file opened from IR slot 3's chip plays on the pedal before it is saved");
-  ok(await page.locator("#irtrial").count() === 1 && await page.inputValue("#irtrialslot") === "2" && /0 of 20 slots used/.test(await text("#ircap")), "the trial panel: aimed at IR3, nothing written yet");
+  ok(await page.locator("#irtrial").count() === 1 && await page.inputValue("#irtrialslot") === "2" && /^0\/20$/.test((await text("#ircap")).trim()), "the trial panel: aimed at IR3, nothing written yet");
   await page.fill("#irtrialname", "Green 4x12");
   await clearToasts();
   await page.click("#irtrialsave");
   ok(await toast(/GREEN 4X12 is in IR3/, 30000), "Save: written into IR3 under the name chosen");
-  ok((await srow("ir", 2).textContent()).includes("GREEN 4X12") && /1 of 20 slots used/.test(await text("#ircap")), "IR3 GREEN 4X12");
+  ok((await srow("ir", 2).textContent()).includes("GREEN 4X12") && /^1\/20$/.test((await text("#ircap")).trim()), "IR3 GREEN 4X12");
   ok((await pedalState()).writesOk, "the flash was written only inside the preset store, the model slots and the IR slots");
 }
 
@@ -556,7 +556,7 @@ const free = (kind, slot) => page.locator(`#${kind}list .free [data-slot="${slot
   await clearToasts();
   await page.locator("#t3kcard .mrow button").first().click();
   ok(await toast(/1 capture on the pedal/, 30000), "TONE3000: one capture got");
-  ok((await srow("nam", 0).textContent()).includes("PLEXI LEAD") && /T3K\s+Plexi Lead by capturer/.test(await srow("nam", 0).textContent()) && bearerOk,
+  ok((await srow("nam", 0).textContent()).includes("PLEXI LEAD") && /TONE3000: Plexi Lead by capturer/.test(await srow("nam", 0).getAttribute("title")) && bearerOk,
     "TONE3000: the A2 model downloaded (with the token) into U01, with where it comes from");
   await shot("editor_7_tone3000.png");
   await page.locator("#t3kcard .back").click();
@@ -652,7 +652,7 @@ const free = (kind, slot) => page.locator(`#${kind}list .free [data-slot="${slot
   await page.waitForSelector('body[data-conn="ready"]', { timeout: 20000 });
   ok(await page.isHidden("#lostbar") && await page.locator("#shell").evaluate((e) => !e.inert), "plugged back in: connected again by itself");
   await go("models");
-  ok((await srow("nam", 0).textContent()).includes("PLEXI LEAD") && /T3K/.test(await srow("nam", 0).textContent()), "after the reconnection the slots still know where their captures came from");
+  ok((await srow("nam", 0).textContent()).includes("PLEXI LEAD") && /TONE3000/.test(await srow("nam", 0).getAttribute("title")), "after the reconnection the slots still know where their captures came from");
 }
 
 // ---- v42: USB audio (pull request #25), in the MIDI section: off by default; the button asks, sets it, and the editor

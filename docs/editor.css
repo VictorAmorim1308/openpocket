@@ -339,7 +339,7 @@ input[type="range"]:focus-visible::-moz-range-thumb { outline: 2px solid var(--a
 .facts dt { color: var(--dim); }
 .facts dd { margin: 0; font-weight: 600; display: flex; flex-wrap: wrap; gap: 6px; }
 
-.mgrid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: var(--gap); align-items: start; }
+.mgrid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--gap); align-items: start; }
 .mcol { display: grid; gap: var(--gap); }
 .cap { display: flex; align-items: center; gap: 12px; }
 .capbar { flex: 1; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; max-inline-size: 320px; }
@@ -566,15 +566,60 @@ a.tone-u[href] { text-decoration: underline; }
 .eqsvg .pk, .eqsvg .sh { fill: #0b0d0c; stroke: var(--c, #6f6); stroke-width: 2; }
 .type[hidden] { display: none; }
 /* OpenPocket Bass: a file tried on the pedal before it takes a slot (edmodels.js trialPanel) */
-.trial { border: 1px solid var(--acc, #f5a623); border-radius: 12px; padding: 14px 16px; margin: 12px 0; background: color-mix(in srgb, var(--acc, #f5a623) 6%, transparent); display: grid; gap: 10px; }
-.trial-h { display: flex; align-items: center; gap: 10px; }
-.trial-h b { font-size: 15px; word-break: break-all; }
-.trial .chip.on { background: #1f3d24; color: #7dff8a; border-color: #2f6b38; }
-.trial-ctl { display: grid; gap: 4px; }
-.trial-ctl .prm { grid-template-columns: 120px minmax(0, 1fr) 64px; }
-.trial-f { display: flex; flex-wrap: wrap; gap: 12px 20px; }
-.trial-f label { display: flex; align-items: center; gap: 8px; }
-.trial-f label > span:first-child { color: var(--dim, #9aa19d); font-size: 13px; }
-.trial-f input { width: 14ch; text-transform: uppercase; font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line, #2a2d2b); background: var(--bg, #0d0f0e); color: inherit; }
-.trial-f select { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line, #2a2d2b); background: var(--bg, #0d0f0e); color: inherit; }
-.trial-a { display: flex; gap: 10px; }
+
+/* ---- Models (OpenPocket Bass): the slots as the pedal's memory cells, in the block's own colour ---- */
+.bank { display: grid; gap: 14px; }
+.bank .card-head h2 { margin: 0; }
+.bank .card-head { flex-wrap: nowrap; }
+@media (max-width: 560px) { .bank .card-head { flex-wrap: wrap; } }
+.bank .count { font-size: 0.875rem; color: var(--faint); font-variant-numeric: tabular-nums; }
+.bank .count b { color: var(--ink); font-weight: 700; }
+.bank .help { inline-size: 26px; block-size: 26px; border-radius: 50%; font-weight: 700; font-size: 0.8125rem; color: var(--faint); }
+.bank .help.on { color: var(--ink); background: var(--raised); }
+.bank .lead { margin: -4px 0 0; max-inline-size: 60ch; }
+.cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; align-items: stretch; }
+.cells > .warn { grid-column: 1 / -1; margin: 4px 0 0; }
+.cell { position: relative; display: grid; grid-template-rows: auto 1fr auto; align-content: start; gap: 2px; min-block-size: 44px;
+  padding: 9px 10px 8px 12px; border-radius: 8px; text-align: start; font: inherit; color: inherit; }
+.cell .n { font-size: 0.6875rem; font-weight: 700; color: var(--faint); font-variant-numeric: tabular-nums; }
+.cell.full { min-block-size: 84px; background: color-mix(in oklch, var(--c) 13%, var(--surface)); border: 1px solid color-mix(in oklch, var(--c) 38%, var(--line-soft)); }
+.cell.full::before { content: ""; position: absolute; inset-block: 10px; inset-inline-start: 0; inline-size: 3px; border-radius: 0 3px 3px 0; background: var(--c); }
+.cell.full .n { color: color-mix(in oklch, var(--c) 70%, var(--ink)); }
+.cell.full .nm { font-weight: 700; font-size: 0.9375rem; line-height: 1.2; overflow-wrap: anywhere; padding-inline-end: 22px; }
+.cell.full .chip { justify-self: start; margin-block-start: 6px; font-size: 0.6875rem; min-block-size: 22px; padding-inline: 8px; }
+.cell.full .chip.dim { padding-inline: 0; border-color: transparent; background: none; }
+.cell.full > .btn.icon { position: absolute; inset-block-start: 4px; inset-inline-end: 4px; inline-size: 28px; block-size: 28px; opacity: 0.7; }
+.cell.full:hover > .btn.icon, .cell.full > .btn.icon:focus-visible { opacity: 1; }
+.cell.empty { display: flex; align-items: center; justify-content: space-between; background: transparent; border: 1px dashed var(--line); cursor: pointer; color: var(--faint);
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease); }
+.cell.empty .ic { inline-size: 16px; block-size: 16px; opacity: 0.45; }
+.cell.empty:hover, .cell.empty:focus-visible { border-color: var(--c); border-style: solid; background: color-mix(in oklch, var(--c) 7%, transparent); color: var(--ink); }
+.cell.empty:hover .ic, .cell.empty:focus-visible .ic { opacity: 1; color: var(--c); }
+.cell.empty.need { border-color: var(--warn); color: var(--warn); }
+.cell:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.libbox { display: grid; gap: 6px; padding-block-start: 6px; border-block-start: 1px solid var(--line-soft); }
+.libbox h3 { margin: 0; font-size: 0.8125rem; font-weight: 600; color: var(--dim); }
+
+/* the file being tried: the one thing that moves on this page, a dot that beats while it plays */
+.trial { display: grid; gap: 12px; padding: 14px 16px 16px; border-radius: 10px; border: 1px solid color-mix(in oklch, var(--c) 55%, var(--line));
+  background: color-mix(in oklch, var(--c) 9%, var(--surface)); }
+.trial-h { display: flex; align-items: center; gap: 12px; }
+.trial-t { flex: 1; display: grid; }
+.trial-t b { font-size: 1.25rem; font-weight: 800; letter-spacing: -0.01em; line-height: 1.15; overflow-wrap: anywhere; }
+.trial-s { font-size: 0.75rem; font-weight: 600; color: var(--dim); }
+.trial.live .trial-s { color: var(--ok); }
+.trial-dot { flex: none; inline-size: 10px; block-size: 10px; border-radius: 50%; background: var(--faint); }
+.trial.live .trial-dot { background: var(--ok); box-shadow: 0 0 0 0 color-mix(in oklch, var(--ok) 60%, transparent); animation: beat 1.6s var(--ease) infinite; }
+@keyframes beat { 0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--ok) 55%, transparent); } 70%, 100% { box-shadow: 0 0 0 9px transparent; } }
+@media (prefers-reduced-motion: reduce) { .trial.live .trial-dot { animation: none; } }
+.trial-ctl { display: grid; gap: 2px; }
+.trial-ctl .prm { grid-template-columns: 96px minmax(0, 1fr) 64px; }
+.trial-ctl input[type=range] { --track: var(--c); }
+.trial-f { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-block-start: 12px; border-block-start: 1px solid color-mix(in oklch, var(--c) 25%, var(--line-soft)); }
+.trial-name { position: relative; flex: 1 1 140px; display: flex; }
+.trial-name input { flex: 1; text-transform: uppercase; font: inherit; font-weight: 700; letter-spacing: 0.04em; padding: 8px 48px 8px 10px; border-radius: var(--r);
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.trial-count { position: absolute; inset-inline-end: 10px; inset-block: 0; display: grid; place-items: center; font-size: 0.75rem; color: var(--faint); pointer-events: none; }
+.trial-f select { flex: 0 1 170px; font: inherit; padding: 8px 10px; border-radius: var(--r); border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.trial-f .btn.primary { flex: none; }
+@media (max-width: 560px) { .cells { grid-template-columns: repeat(3, minmax(0, 1fr)); } .trial-f select, .trial-f .btn.primary { flex: 1 1 100%; } }

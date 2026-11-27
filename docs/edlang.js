@@ -96,7 +96,7 @@ const EXACT = {
   "This pedal's firmware cannot play a file before it is saved. Update it from the installer to try files first.": "O firmware desta pedaleira não toca um arquivo antes de gravar. Atualize pelo instalador para poder testar antes.",
   "Name on the pedal": "Nome na pedaleira", "Save into": "Gravar no slot", "Save to the pedal": "Gravar na pedaleira", "Drop it": "Descartar",
   "Not used": "Sem uso", "The presets that use it": "Os presets que usam", "Update it from the installer": "Atualize pelo instalador",
-  "Add several": "Vários de uma vez", "Clear this list": "Limpar esta lista", "Move to another slot…": "Mover para outro slot…",
+  "Add several": "Em lote", "Clear this list": "Limpar esta lista", "Move to another slot…": "Mover para outro slot…",
   "Not in this browser's library: load its file again to move it.": "Não está na biblioteca deste navegador: carregue o arquivo de novo para mover.",
   "Replace with a file…": "Substituir por um arquivo…", "All empty": "Todos vazios",
   "Built into the firmware: they need no slot and cannot be changed.": "Vêm no firmware: não usam slot e não mudam.",
@@ -147,7 +147,14 @@ const EXACT = {
   "Monitor": "Monitor", "Clear": "Limpar",
   "Nothing received yet. Messages from a controller show here, and the pedal's own when a setting is changed on it (with SEND on).": "Nada recebido ainda. As mensagens de um controlador aparecem aqui, e as da pedaleira quando um ajuste muda nela (com SEND ligado).",
   // ---- the installer link, the language switch ----
-  "English": "English", "in every preset": "em todos os presets",
+  "English": "English",
+  "About these files": "Sobre estes arquivos", "Try a file": "Testar arquivo", "Ready to save": "Pronto para gravar",
+  "Saved on this computer, not on the pedal": "Guardados neste computador, fora da pedaleira",
+  "This pedal's firmware cannot play a file before it is saved.": "O firmware desta pedaleira não toca um arquivo antes de gravar.",
+  "Captures for the AMP block. The pedal plays NAM A2 files only: on TONE3000, pick the A2 version.": "Capturas para o bloco AMP. A pedaleira só toca arquivos NAM A2: no TONE3000, escolha a versão A2.",
+  "Impulse responses for the CAB block. The pedal keeps the first 45 ms of the WAV file and evens out its level.": "IRs para o bloco CAB. A pedaleira guarda os primeiros 45 ms do WAV e acerta o volume.",
+  "Free amp captures shared by players.": "Capturas de amp de graça, compartilhadas por músicos.",
+  "Opens in its own window: sign in there and choose a tone. Its A2 captures come back here.": "Abre numa janela própria: entre lá e escolha um timbre. As capturas A2 voltam para cá.", "in every preset": "em todos os presets",
 };
 
 // phrases with a name or a number in them: [English pattern, Portuguese]
@@ -184,6 +191,8 @@ const PAT = [
   [/^Actions for (.+)$/, "Ações para $1"],
   // models
   [/^Load a \.(nam|wav) file to try$/, "Carregar arquivo .$1 para testar"],
+  [/^Try a \.(nam|wav) file$/, "Testar um arquivo .$1"],
+  [/^(\d+) presets? \((.+)\) wait for this slot\. Load a file into (\S+)\.$/, "$1 preset(s) ($2) esperam este slot. Carregue um arquivo no $3."],
   [/^Several \.(nam|wav) files straight into the free slots, without trying them$/, "Vários arquivos .$1 direto nos slots livres, sem testar"],
   [/^Loading (.+) to try$/, "Carregando $1 para testar"],
   [/^Trying (.+)$/, "Testando $1"],

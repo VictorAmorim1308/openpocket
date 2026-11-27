@@ -19,7 +19,7 @@ const pedal = () => pedalKey(app.info && app.info.identity);
 const BANKS = {
   nam: {
     title: "Amp captures", sub: "NAM A2", input: "namfile", accept: (f) => /\.nam$/i.test(f.name), files: ".nam files",
-    lead: "The AMP block's NAM type plays these neural captures. The pedal runs A2 captures (A2-Lite): on TONE3000, pick the A2 version.",
+    lead: "Captures for the AMP block. The pedal plays NAM A2 files only: on TONE3000, pick the A2 version.",
     slots: () => app.nam.models.filter((m) => m.user),
     // a .nam file's text -> what the pedal stores, at the same loudness as every other model
     async prepare(text, name) {
@@ -40,7 +40,7 @@ const BANKS = {
   },
   ir: {
     title: "Cabinet IRs", sub: "WAV", input: "irfile", accept: (f) => /\.wav$/i.test(f.name), files: ".wav files",
-    lead: "The CAB block's USER IR type plays these impulse responses. The pedal keeps the first 45 ms of a WAV file, at 44.1 kHz, and sets its level like the other cabinets.",
+    lead: "Impulse responses for the CAB block. The pedal keeps the first 45 ms of the WAV file and evens out its level.",
     slots: () => app.irs,
     async prepare(buf, name) {
       const nm = irName(name), ir = prepareIr(parseWav(buf));
@@ -335,26 +335,24 @@ function trialControls(kind) {
   }));
 }
 function trialPanel(kind) {
-  const B = BANKS[kind], K = KINDS[kind], slots = B.slots(), max = 11;
-  const name = h("input", { id: `${kind}trialname`, value: trial.name, maxlength: max, spellcheck: false, autocomplete: "off",
+  const B = BANKS[kind], slots = B.slots(), max = 11;
+  const name = h("input", { id: `${kind}trialname`, value: trial.name, maxlength: max, spellcheck: false, autocomplete: "off", "aria-label": "Name on the pedal",
     oninput: () => { trial.name = name.value; count.textContent = `${cleanSlotName(name.value).length}/${max}`; } });
-  const count = h("span", { class: "dim small", text: `${cleanSlotName(trial.name).length}/${max}` });
-  const sel = h("select", { id: `${kind}trialslot`, onchange: () => trialSlot(kind, +sel.value) },
+  const count = h("span", { class: "trial-count", text: `${cleanSlotName(trial.name).length}/${max}` });
+  const sel = h("select", { id: `${kind}trialslot`, "aria-label": "Save into", onchange: () => trialSlot(kind, +sel.value) },
     slots.map((s) => h("option", { value: s.slot, text: `${tag(kind, s.slot)}  ${s.used ? `${s.name} (replace)` : "empty"}` })));
   sel.value = String(trial.slot);
-  return h("div", { class: "trial", id: `${kind}trial` },
-    h("div", { class: "trial-h" }, h("b", { text: `Trying ${trial.file}` }), h("span", { class: "grow" }),
-      trial.live ? h("span", { class: "chip on", text: "Playing on the pedal" }) : h("span", { class: "chip dim", text: "Not playing" })),
-    h("p", { class: "dim small", text: trial.live
-      ? `Play your bass: the pedal plays it in ${tag(kind, trial.slot)} (nothing written yet). The ${K.block} block's settings below change the sound live.`
-      : "This pedal's firmware cannot play a file before it is saved. Update it from the installer to try files first." }),
+  return h("div", { class: `trial${trial.live ? " live" : ""}`, id: `${kind}trial` },
+    h("div", { class: "trial-h" },
+      h("span", { class: "trial-dot", "aria-hidden": "true" }),
+      h("div", { class: "trial-t" }, h("span", { class: "trial-s", text: trial.live ? "Playing on the pedal" : "Ready to save" }), h("b", { text: trial.made.name, title: trial.file })),
+      h("button", { type: "button", class: "btn icon small", id: `${kind}trialdrop`, "aria-label": "Drop it", title: "Drop it", onclick: () => endTrial() }, icon("x"))),
+    trial.live ? null : h("p", { class: "dim small" }, "This pedal's firmware cannot play a file before it is saved. ", h("a", { href: "./", text: "Update it from the installer" }), "."),
     trialControls(kind),
     h("div", { class: "trial-f" },
-      h("label", {}, h("span", { text: "Name on the pedal" }), name, count),
-      h("label", {}, h("span", { text: "Save into" }), sel)),
-    h("div", { class: "trial-a" },
-      h("button", { type: "button", class: "btn primary", id: `${kind}trialsave`, onclick: () => saveTrial(kind) }, `Save to the pedal`),
-      h("button", { type: "button", class: "btn", id: `${kind}trialdrop`, onclick: () => endTrial() }, "Drop it")));
+      h("label", { class: "trial-name" }, name, count),
+      sel,
+      h("button", { type: "button", class: "btn primary", id: `${kind}trialsave`, onclick: () => saveTrial(kind) }, "Save to the pedal")));
 }
 
 // ---- a kind's card ----
@@ -371,6 +369,26 @@ function usageChip(kind, slot, use) {
   return h("button", { type: "button", class: "chip link", text: plural(u.length, "preset"), "aria-haspopup": "menu", title: "The presets that use it",
     onclick: (ev) => menu(ev.currentTarget, u.map((p) => ({ label: `${slotName(p)} ${app.slots[p].name}`, run: () => { emit("view-go", "sound"); selectPreset(p); } }))) });
 }
+const help = { nam: false, ir: false };
+function slotCell(kind, s, use, e) {
+  const u = use.get(s.slot) || [];
+  if (!s.used) return h("button", { type: "button", class: `cell empty${u.length ? " need" : ""}`, "data-slot": s.slot,
+    title: u.length ? `${plural(u.length, "preset")} (${presetNames(u)}) wait for this slot. Load a file into ${tag(kind, s.slot)}.` : `Load a file into ${tag(kind, s.slot)}`,
+    "aria-label": `Load a file into ${tag(kind, s.slot)}`, onclick: () => pickTrial(kind, s.slot) },
+    h("span", { class: "n", text: tag(kind, s.slot) }), icon("plus"));
+  const src = e && e.source ? (e.source.from === "tone3000" ? `TONE3000: ${e.source.title}${e.source.creator ? ` by ${e.source.creator}` : ""}` : [e.source.file, e.detail].filter(Boolean).join(", ")) : "";
+  return h("div", { class: "cell full", "data-slot": s.slot, title: src || null },
+    h("span", { class: "n", text: tag(kind, s.slot) }),
+    h("b", { class: "nm", text: s.name }),
+    usageChip(kind, s.slot, use),
+    h("button", { type: "button", class: "btn icon small", "aria-label": `Actions for ${tag(kind, s.slot)} ${s.name}`, "aria-haspopup": "menu", onclick: (ev) => menu(ev.currentTarget, [
+      { label: "Rename…", run: () => renameSlot(kind, s) },
+      { label: "Move to another slot…", run: () => moveSlot(kind, s), disabled: !e, why: "Not in this browser's library: load its file again to move it." },
+      { label: "Replace with a file…", run: () => pickTrial(kind, s.slot) },
+      "-",
+      { label: "Remove from the pedal", run: () => removeFromPedal(kind, s), danger: true },
+    ]) }, icon("more")));
+}
 function render(kind) {
   const el = $(kind);
   if (!has(kind)) {
@@ -383,62 +401,41 @@ function render(kind) {
   const used = slots.filter((s) => s.used).length;
   const onPedal = new Set([...held.values()].map((e) => e.id));
   const rest = libList[kind].filter((e) => !onPedal.has(e.id));
+  const ref = app.refs[kind], color = ref && app.cat && app.cat.blocks[ref.b] ? app.cat.blocks[ref.b].color : "";
+  if (color) el.style.setProperty("--c", color);
+  const waiting = slots.filter((s) => !s.used && (use.get(s.slot) || []).length);
   fill(el,
     h("div", { class: "card-head" },
-      h("h2", {}, B.title, " ", h("small", { text: B.sub })),
+      h("h2", {}, B.title),
+      h("span", { class: "count", id: `${kind}cap`, "aria-label": `${used} of ${slots.length} slots used`, title: `${used} of ${slots.length} slots used` }, h("b", { text: used }), `/${slots.length}`),
+      h("button", { type: "button", class: `btn icon small help${help[kind] ? " on" : ""}`, "aria-expanded": String(help[kind]), "aria-label": "About these files", title: "About these files",
+        onclick: () => { help[kind] = !help[kind]; render(kind); } }, "?"),
       h("span", { class: "grow" }),
-      h("button", { type: "button", class: "btn small primary", id: `${kind}try`, onclick: () => pickTrial(kind) }, icon("plus"), ` Load a ${kind === "nam" ? ".nam" : ".wav"} file to try`),
-      h("button", { type: "button", class: "btn small", id: `${kind}add`, title: `Several ${B.files} straight into the free slots, without trying them`, onclick: () => pickFile(kind) }, `Add several`)),
-    h("div", { class: "cap" },
-      h("span", { class: "capbar", role: "img", "aria-label": `${used} of ${slots.length} slots used` }, slots.map((s) => h("i", { class: s.used ? "on" : "" }))),
-      h("span", { class: "cap-t", id: `${kind}cap`, text: `${used} of ${slots.length} slots used` })),
-    h("p", { class: "lead dim", text: B.lead }),
+      h("button", { type: "button", class: "btn small", id: `${kind}add`, title: `Several ${B.files} straight into the free slots, without trying them`, onclick: () => pickFile(kind) }, "Add several"),
+      h("button", { type: "button", class: "btn small primary", id: `${kind}try`, onclick: () => pickTrial(kind) }, icon("plus"), " Try a file")),
+    help[kind] ? h("p", { class: "lead dim", text: B.lead }) : null,
     trial.kind === kind ? trialPanel(kind) : null,
     queue[kind].length ? h("div", { class: "queue", "aria-live": "polite" },
       queue[kind].map((q) => h("div", { class: `q ${q.state}` }, h("span", { class: "q-n", text: q.name }), h("span", { class: "q-t", text: q.text }),
         q.state === "work" && h("span", { class: "q-p" }, h("i", { style: `width:${Math.round((q.frac || 0) * 100)}%` })))),
       queue[kind].every((q) => q.state !== "wait" && q.state !== "work") && h("button", { type: "button", class: "btn small", text: "Clear this list", onclick: () => { queue[kind] = []; render(kind); } })) : null,
-    h("div", { class: "slots", id: `${kind}list` },
-      slots.filter((s) => s.used).map((s) => {
-        const e = held.get(s.slot);
-        return h("div", { class: "srow", "data-slot": s.slot },
-          h("span", { class: "n", text: tag(kind, s.slot) }),
-          h("span", { class: "nm" }, h("b", { text: s.name }), sourceLine(e)),
-          usageChip(kind, s.slot, use),
-          h("button", { type: "button", class: "btn icon small", "aria-label": `Actions for ${tag(kind, s.slot)} ${s.name}`, "aria-haspopup": "menu", onclick: (ev) => menu(ev.currentTarget, [
-            { label: "Rename…", run: () => renameSlot(kind, s) },
-            { label: "Move to another slot…", run: () => moveSlot(kind, s), disabled: !e, why: "Not in this browser's library: load its file again to move it." },
-            { label: "Replace with a file…", run: () => pickFile(kind, s.slot) },
-            "-",
-            { label: "Remove from the pedal", run: () => removeFromPedal(kind, s), danger: true },
-          ]) }, icon("more")));
-      }),
-      // the empty slots, small: one click loads a file into that very slot (a preset may be waiting for it)
-      used < slots.length && h("div", { class: "free" },
-        h("span", { class: "free-l", text: used ? "Empty" : "All empty" }),
-        slots.filter((s) => !s.used).map((s) => {
-          const u = use.get(s.slot) || [];
-          return h("button", { type: "button", class: `chip slot${u.length ? " need" : ""}`, "data-slot": s.slot, text: tag(kind, s.slot),
-            title: u.length ? `${plural(u.length, "preset")} (${presetNames(u)}) ${u.length === 1 ? "points" : "point"} here and ${u.length === 1 ? "plays" : "play"} without ${K.without}. Load a file into ${tag(kind, s.slot)}.` : `Load a file into ${tag(kind, s.slot)}`,
-            "aria-label": `Load a file into ${tag(kind, s.slot)}${u.length ? `, which ${plural(u.length, "preset")} ${u.length === 1 ? "is" : "are"} waiting for` : ""}`,
-            onclick: () => pickTrial(kind, s.slot) });
-        })),
-      slots.some((s) => !s.used && (use.get(s.slot) || []).length) && h("p", { class: "warn small" }, icon("alert"),
-        ` ${slots.filter((s) => !s.used && (use.get(s.slot) || []).length).map((s) => `${tag(kind, s.slot)} (${presetNames(use.get(s.slot))})`).join(", ")}: presets point to an empty slot and play without ${K.without}.`)));
+    h("div", { class: "cells", id: `${kind}list` },
+      slots.map((s) => slotCell(kind, s, use, held.get(s.slot))),
+      waiting.length ? h("p", { class: "warn small" }, icon("alert"),
+        ` ${waiting.map((s) => `${tag(kind, s.slot)} (${presetNames(use.get(s.slot))})`).join(", ")}: presets point to an empty slot and play without ${K.without}.`) : null));
   if (kind === "nam" && app.nam.models.some((m) => !m.user && m.used)) {   // (OpenPocket Bass: none)
     const fact = app.nam.models.filter((m) => !m.user);
     el.append(h("details", { class: "factory" }, h("summary", { text: `${fact.length} factory models` }),
       h("div", { class: "fact" }, fact.map((m) => h("span", { text: m.name }))), h("p", { class: "dim", text: "Built into the firmware: they need no slot and cannot be changed." })));
   }
-  el.append(h("h3", { text: "Library on this computer" }),
-    h("p", { class: "dim", text: lib.persistent ? `Every ${K.thing} you add is kept in this browser, so it can move between slots, be renamed, or come back later. The pedal itself cannot send one back.`
-      : `This browser does not let the page keep files: the library lasts until the page is closed.` }),
-    h("div", { class: "slots lib", id: `${kind}lib` }, rest.length ? rest.map((e) => h("div", { class: "srow" },
+  if (rest.length) el.append(h("div", { class: "libbox" },
+    h("h3", { text: "Saved on this computer, not on the pedal" }),
+    h("div", { class: "slots lib", id: `${kind}lib` }, rest.map((e) => h("div", { class: "srow" },
       h("span", { class: "nm" }, h("b", { text: e.name }), sourceLine(e)),
       h("button", { type: "button", class: "btn small", text: "Try", title: "Hear it on the pedal before it takes a slot", onclick: () => startTrial(kind, { name: e.name, bytes: e.bytes, detail: e.detail, source: e.source, id: e.id }) }),
       h("button", { type: "button", class: "btn small", text: "Send to the pedal", onclick: () => sendToPedal(kind, e) }),
-      h("button", { type: "button", class: "btn icon small", "aria-label": `Delete ${e.name} from the library`, onclick: () => forget(kind, e) }, icon("x"))))
-      : h("p", { class: "dim empty-note", text: libList[kind].length ? `All ${plural(libList[kind].length, K.thing)} in the library ${libList[kind].length === 1 ? "is" : "are"} on the pedal.` : `Nothing yet. Add ${B.files}, or drop them on this panel.` })));
+      h("button", { type: "button", class: "btn icon small", "aria-label": `Delete ${e.name} from the library`, onclick: () => forget(kind, e) }, icon("x")))))));
+  else el.append(h("div", { class: "slots lib", id: `${kind}lib`, hidden: true }));
 }
 
 // ---- TONE3000 ----
@@ -554,11 +551,10 @@ function renderT3k() {
   if (!t3kSignedIn()) {
     fill(el,
       h("div", { class: "card-head" }, logo()),
-      h("p", { class: "t3k-pitch", text: "Amp, pedal and full-rig captures shared by players, free to use. OpenPocket plays their NAM A2 captures." }),
-      h("p", { class: "dim", text: "TONE3000 opens in its own window: sign in there, search and listen, and choose a tone. It comes back here with its captures, ready for a slot." }),
+      h("p", { class: "t3k-pitch", text: "Free amp captures shared by players." }),
+      h("p", { class: "dim", text: "Opens in its own window: sign in there and choose a tone. Its A2 captures come back here." }),
       h("button", { type: "button", class: "btn primary", id: "t3kbrowse", disabled: t3k.busy, onclick: browse }, t3k.busy ? "Waiting for the TONE3000 window…" : "Browse TONE3000"),
-      t3k.error && h("p", { class: "warn", role: "alert" }, icon("alert"), ` TONE3000: ${t3k.error}`),
-      h("p", { class: "dim small", text: "The sign-in lasts while this page is open and is not stored. The captures you get are kept in the library on this computer." }));
+      t3k.error && h("p", { class: "warn", role: "alert" }, icon("alert"), ` TONE3000: ${t3k.error}`));
     return;
   }
   const u = t3k.user;
