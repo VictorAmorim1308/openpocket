@@ -3,11 +3,12 @@
 // files this browser keeps for them (docs/pxlib.js), and TONE3000 (docs/pxt3k.js). The two kinds of slot share
 // everything here but how a file is read and sent.
 
-import { app, $, h, fill, icon, on, emit, slotName, say, task, sleep, confirmDialog, promptDialog, pickDialog, menu, plural, dropTarget } from "./edcore.js";
+import { app, $, h, fill, icon, on, emit, slotName, say, task, sleep, confirmDialog, promptDialog, pickDialog, menu, plural, dropTarget, act, blk, typeOf } from "./edcore.js";
 import { writeSlots, entry, selectPreset } from "./edpresets.js";
 import { parseNam, levelTrim, packModel, readDi } from "./pxnam.js";
 import { parseWav, prepareIr, packIr, irName } from "./pxir.js";
 import { Library, KINDS, slotRef, usage, retarget, renamePacked, cleanSlotName, pedalKey, planMove, indexKnob, presetSlot } from "./pxlib.js";
+import { sendParam } from "./edsound.js";
 import { t3kReady, t3kSelect, t3kSignIn, t3kSignedIn, t3kSignOut, t3kTone, t3kModels, t3kDownload, t3kUser, t3kList, t3kA2Count, t3kLink, t3kPicture, T3K_LISTS } from "./pxt3k.js";
 
 let lib = null, namDi = null;
@@ -30,12 +31,16 @@ const BANKS = {
     },
     read: (f) => f.text(),
     upload: (slot, bytes, progress) => app.ed.namUpload(slot, bytes, progress),
+    stage: (bytes, progress, only) => app.ed.namStage(bytes, progress, only),
+    preview: (slot) => app.ed.namPreview(slot),
+    commit: (slot) => app.ed.namCommit(slot),
+    rename: (slot, name) => app.ed.namRename(slot, name),
     erase: (slot) => app.ed.namErase(slot),
     async reload() { app.nam = await app.ed.namList(); await app.ed.namTexts(); },
   },
   ir: {
     title: "Cabinet IRs", sub: "WAV", input: "irfile", accept: (f) => /\.wav$/i.test(f.name), files: ".wav files",
-    lead: "The CAB block's USER IR type plays these impulse responses. The pedal keeps the first 23 ms of a WAV file, at 44.1 kHz, and sets its level like the other cabinets.",
+    lead: "The CAB block's USER IR type plays these impulse responses. The pedal keeps the first 45 ms of a WAV file, at 44.1 kHz, and sets its level like the other cabinets.",
     slots: () => app.irs,
     async prepare(buf, name) {
       const nm = irName(name), ir = prepareIr(parseWav(buf));
@@ -43,6 +48,10 @@ const BANKS = {
     },
     read: (f) => f.arrayBuffer(),
     upload: (slot, bytes, progress) => app.ed.irUpload(slot, bytes, progress),
+    stage: (bytes, progress, only) => app.ed.irStage(bytes, progress, only),
+    preview: (slot) => app.ed.irPreview(slot),
+    commit: (slot) => app.ed.irCommit(slot),
+    rename: (slot, name) => app.ed.irRename(slot, name),
     erase: (slot) => app.ed.irErase(slot),
     async reload() { app.irs = await app.ed.irList(); await app.ed.irTexts(); },
   },
@@ -162,8 +171,13 @@ async function renameSlot(kind, s) {
   const nm = name === null ? "" : cleanSlotName(name);
   if (!nm || nm === s.name) return;
   await task(`Renaming ${s.name}`, async (progress) => {
-    const next = await lib.put({ ...e, name: nm, bytes: renamePacked(e.bytes, nm) });
-    await put(kind, s.slot, next, progress);
+    const rc = await BANKS[kind].rename(s.slot, nm);   // OpenPocket Bass: the pedal renames it in place (no file needed)
+    if (rc === null) {                                // (an older firmware: sent again from the library)
+      if (!e) throw new Error("this pedal's firmware renames only what is in this browser's library: load its file again");
+      const next = await lib.put({ ...e, name: nm, bytes: renamePacked(e.bytes, nm) });
+      await put(kind, s.slot, next, progress);
+    } else if (rc) throw new Error(rc === 2 ? "the pedal could not write its memory" : "the pedal could not rename it");
+    else if (e) await lib.put({ ...e, name: nm, bytes: renamePacked(e.bytes, nm) });
     await refreshAssets(kind);
     return `${tag(kind, s.slot)} is ${nm} now.`;
   });
@@ -214,9 +228,138 @@ function pickFile(kind, into = -1) {
   inp.click();
 }
 
+// ---- OpenPocket Bass: a file tried on the pedal before it takes a slot (NAM_PREVIEW / IR_PREVIEW) ----
+// The file goes into the pedal's staging buffer and plays as if slot `slot` held it: the sound's AMP (or CAB) points
+// there and is switched on, its tone settings work as usual. Saved: written into the slot chosen, under the name typed.
+// Dropped: the slot plays what it really holds again, and the block is put back as it was.
+const trial = { kind: null, made: null, file: "", name: "", slot: -1, prev: null, live: false, old: false, busy: false };
+const TRY_SET = { nam: [1, 2, 3, 4, "level"], ir: [1, 2, 3, 4] };   // the settings shown while trying (k, or the AMP's LEVEL)
+const SFX = 3;                                                    // (the AMP's LEVEL lives in the SFX block's 1st setting)
+async function pointAt(kind, slot) {                              // the sound plays slot `slot` in its block, switched on
+  const ref = app.refs[kind];
+  if (!ref) return;
+  const B = blk(ref.b);
+  if (B.fixed === undefined || B.fixed < 0) { if (app.st.preset.type[ref.b] !== ref.t) await app.ed.setType(ref.b, ref.t); }
+  await app.ed.setParam(ref.b, 0, indexKnob(ref.base + slot, ref.n));
+  await app.ed.setOn(ref.b, true);
+  app.st = await app.ed.state();
+  emit("state", {});
+}
+function pickTrial(kind, slot = -1) {
+  const inp = $(BANKS[kind].input);
+  inp.multiple = false;
+  inp.value = "";
+  inp.onchange = () => { const f = inp.files[0]; if (f) startTrial(kind, f, slot); };
+  inp.click();
+}
+// `src`: a File, or a library entry's { name, bytes, detail, source, id }
+async function startTrial(kind, src, slot = -1) {
+  if (trial.kind) await endTrial();
+  const B = BANKS[kind], K = KINDS[kind], ref = app.refs[kind];
+  return task(`Loading ${src.name} to try`, async (progress) => {
+    const made = src instanceof Blob ? { ...(await B.prepare(await B.read(src), src.name)), source: { from: "file", file: src.name } } : src;
+    progress(0.1);
+    await B.stage(made.bytes, (x) => progress(0.1 + 0.8 * x));
+    const to = slot >= 0 ? slot : freeSlot(kind) >= 0 ? freeSlot(kind) : 0;
+    const p = app.st.preset;
+    Object.assign(trial, { kind, made, file: src.name, name: made.name, slot: to, live: false, old: false, busy: false,
+      prev: { knob: p.p[ref.b][0], on: !!p.on[ref.b], type: p.type[ref.b], level: p.p[SFX][0] } });
+    const rc = await B.preview(to);
+    if (rc === 0) { trial.live = true; await pointAt(kind, to); }
+    else if (rc === null) trial.old = true;
+    else throw new Error(`the pedal refused the ${K.thing}`);
+    progress(1);
+    render(kind);
+    setTimeout(() => $(`${kind}trial`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }), 50);
+    return trial.live ? `${made.name} plays on the pedal now. Try it, then save it or drop it.` : `${made.name} is ready to save (this firmware cannot play it before).`;
+  });
+}
+async function trialSlot(kind, slot) {                            // another slot chosen: the preview moves there
+  trial.slot = slot;
+  if (trial.live) await act(async () => { await BANKS[kind].preview(slot); await pointAt(kind, slot); });
+  render(kind);
+}
+async function endTrial(restore = true) {                         // dropped: the slot and the block as they were
+  const kind = trial.kind, ref = kind && app.refs[kind], prev = trial.prev;
+  if (!kind) return;
+  trial.kind = null;
+  try {
+    if (trial.live) await BANKS[kind].preview(null);
+    if (restore && ref && prev && app.ed) {
+      if (app.st.preset.type[ref.b] !== prev.type) await app.ed.setType(ref.b, prev.type);
+      await app.ed.setParam(ref.b, 0, prev.knob);
+      await app.ed.setOn(ref.b, prev.on);
+      app.st = await app.ed.state(); emit("state", {});
+    }
+  } catch (_) { }
+  render(kind);
+}
+async function saveTrial(kind) {
+  const B = BANKS[kind], K = KINDS[kind], slot = trial.slot, nm = cleanSlotName(trial.name) || trial.made.name;
+  const slots = B.slots(), over = slots[slot] && slots[slot].used ? slots[slot].name : "";
+  if (over) {
+    const use = await knownUse(kind), u = (use && use.get(slot)) || [];
+    if (!(await confirmDialog({ title: `Replace ${over} in ${tag(kind, slot)}?`, confirm: `Replace ${tag(kind, slot)}`, danger: true,
+      body: h("p", { text: u.length ? `${plural(u.length, "preset")} (${presetNames(u)}) will play ${nm} instead.` : `${over} leaves the pedal. No saved preset uses it.` }) }))) return;
+  }
+  await task(`Saving ${nm} in ${tag(kind, slot)}`, async (progress) => {
+    let bytes = trial.made.bytes;
+    if (nm !== trial.made.name) { bytes = renamePacked(bytes, nm); await B.stage(bytes, () => { }, [0]); }   // (the header only)
+    progress(0.3);
+    const rc = await B.commit(slot);
+    if (rc) throw new Error(rc === 2 ? "the pedal could not write its memory" : `the pedal refused the ${K.thing}`);
+    const e = trial.made.id ? await lib.put({ ...(await lib.get(trial.made.id)), name: nm, bytes })
+      : await lib.add({ kind, name: nm, bytes, detail: trial.made.detail, source: trial.made.source || { from: "file", file: trial.file } });
+    lib.setLink(pedal(), kind, slot, e.id);
+    trial.kind = null; trial.live = false;
+    await B.reload();
+    await pointAt(kind, slot);
+    await refreshAssets(kind);
+    progress(1);
+    return `${nm} is in ${tag(kind, slot)}. The sound playing now uses it: save the preset to keep it that way.`;
+  });
+}
+function trialControls(kind) {
+  const ref = app.refs[kind];
+  if (!ref || !trial.live) return null;
+  const p = app.st.preset, T = typeOf(p, ref.b);
+  return h("div", { class: "trial-ctl" }, TRY_SET[kind].map((k) => {
+    const lv = k === "level", b = lv ? SFX : ref.b, kk = lv ? 0 : k, param = lv ? { name: "LEVEL" } : T.params[k];
+    if (!param) return null;
+    const id = `try${kind}${kk}${lv ? "l" : ""}`, v = p.p[b][kk];
+    const show = (x) => lv ? `${(x - 50) * 0.24 > 0 ? "+" : ""}${((x - 50) * 0.24).toFixed(1)} dB` : (param.texts && param.texts[x]) || String(x);
+    const out = h("output", { class: "val", for: id, text: show(v) });
+    const ctl = h("input", { type: "range", id, min: 0, max: 100, step: 1, value: v, style: `--p:${v}%`,
+      oninput: () => { out.textContent = show(+ctl.value); ctl.style.setProperty("--p", `${ctl.value}%`); sendParam(b, kk, +ctl.value); } });
+    return h("div", { class: "prm" }, h("label", { for: id, text: param.name }), ctl, out);
+  }));
+}
+function trialPanel(kind) {
+  const B = BANKS[kind], K = KINDS[kind], slots = B.slots(), max = 11;
+  const name = h("input", { id: `${kind}trialname`, value: trial.name, maxlength: max, spellcheck: false, autocomplete: "off",
+    oninput: () => { trial.name = name.value; count.textContent = `${cleanSlotName(name.value).length}/${max}`; } });
+  const count = h("span", { class: "dim small", text: `${cleanSlotName(trial.name).length}/${max}` });
+  const sel = h("select", { id: `${kind}trialslot`, onchange: () => trialSlot(kind, +sel.value) },
+    slots.map((s) => h("option", { value: s.slot, text: `${tag(kind, s.slot)}  ${s.used ? `${s.name} (replace)` : "empty"}` })));
+  sel.value = String(trial.slot);
+  return h("div", { class: "trial", id: `${kind}trial` },
+    h("div", { class: "trial-h" }, h("b", { text: `Trying ${trial.file}` }), h("span", { class: "grow" }),
+      trial.live ? h("span", { class: "chip on", text: "Playing on the pedal" }) : h("span", { class: "chip dim", text: "Not playing" })),
+    h("p", { class: "dim small", text: trial.live
+      ? `Play your bass: the pedal plays it in ${tag(kind, trial.slot)} (nothing written yet). The ${K.block} block's settings below change the sound live.`
+      : "This pedal's firmware cannot play a file before it is saved. Update it from the installer to try files first." }),
+    trialControls(kind),
+    h("div", { class: "trial-f" },
+      h("label", {}, h("span", { text: "Name on the pedal" }), name, count),
+      h("label", {}, h("span", { text: "Save into" }), sel)),
+    h("div", { class: "trial-a" },
+      h("button", { type: "button", class: "btn primary", id: `${kind}trialsave`, onclick: () => saveTrial(kind) }, `Save to the pedal`),
+      h("button", { type: "button", class: "btn", id: `${kind}trialdrop`, onclick: () => endTrial() }, "Drop it")));
+}
+
 // ---- a kind's card ----
 function sourceLine(e) {
-  if (!e) return h("span", { class: "meta dim", text: "Not in this browser's library" });
+  if (!e) return null;                            // (what the pedal holds is enough: its file is not needed)
   const s = e.source || {};
   if (s.from === "tone3000") return h("span", { class: "meta" }, h("span", { class: "t3k-mark", text: "T3K" }), ` ${s.title}${s.creator ? ` by ${s.creator}` : ""}`);
   return h("span", { class: "meta dim", text: [s.file, e.detail].filter(Boolean).join(" · ") });
@@ -244,11 +387,13 @@ function render(kind) {
     h("div", { class: "card-head" },
       h("h2", {}, B.title, " ", h("small", { text: B.sub })),
       h("span", { class: "grow" }),
-      h("button", { type: "button", class: "btn small", id: `${kind}add`, onclick: () => pickFile(kind) }, icon("plus"), ` Add ${B.files}`)),
+      h("button", { type: "button", class: "btn small primary", id: `${kind}try`, onclick: () => pickTrial(kind) }, icon("plus"), ` Load a ${kind === "nam" ? ".nam" : ".wav"} file to try`),
+      h("button", { type: "button", class: "btn small", id: `${kind}add`, title: `Several ${B.files} straight into the free slots, without trying them`, onclick: () => pickFile(kind) }, `Add several`)),
     h("div", { class: "cap" },
       h("span", { class: "capbar", role: "img", "aria-label": `${used} of ${slots.length} slots used` }, slots.map((s) => h("i", { class: s.used ? "on" : "" }))),
       h("span", { class: "cap-t", id: `${kind}cap`, text: `${used} of ${slots.length} slots used` })),
     h("p", { class: "lead dim", text: B.lead }),
+    trial.kind === kind ? trialPanel(kind) : null,
     queue[kind].length ? h("div", { class: "queue", "aria-live": "polite" },
       queue[kind].map((q) => h("div", { class: `q ${q.state}` }, h("span", { class: "q-n", text: q.name }), h("span", { class: "q-t", text: q.text }),
         q.state === "work" && h("span", { class: "q-p" }, h("i", { style: `width:${Math.round((q.frac || 0) * 100)}%` })))),
@@ -261,7 +406,7 @@ function render(kind) {
           h("span", { class: "nm" }, h("b", { text: s.name }), sourceLine(e)),
           usageChip(kind, s.slot, use),
           h("button", { type: "button", class: "btn icon small", "aria-label": `Actions for ${tag(kind, s.slot)} ${s.name}`, "aria-haspopup": "menu", onclick: (ev) => menu(ev.currentTarget, [
-            { label: "Rename…", run: () => renameSlot(kind, s), disabled: !e, why: "Not in this browser's library: load its file again to rename it." },
+            { label: "Rename…", run: () => renameSlot(kind, s) },
             { label: "Move to another slot…", run: () => moveSlot(kind, s), disabled: !e, why: "Not in this browser's library: load its file again to move it." },
             { label: "Replace with a file…", run: () => pickFile(kind, s.slot) },
             "-",
@@ -276,11 +421,11 @@ function render(kind) {
           return h("button", { type: "button", class: `chip slot${u.length ? " need" : ""}`, "data-slot": s.slot, text: tag(kind, s.slot),
             title: u.length ? `${plural(u.length, "preset")} (${presetNames(u)}) ${u.length === 1 ? "points" : "point"} here and ${u.length === 1 ? "plays" : "play"} without ${K.without}. Load a file into ${tag(kind, s.slot)}.` : `Load a file into ${tag(kind, s.slot)}`,
             "aria-label": `Load a file into ${tag(kind, s.slot)}${u.length ? `, which ${plural(u.length, "preset")} ${u.length === 1 ? "is" : "are"} waiting for` : ""}`,
-            onclick: () => pickFile(kind, s.slot) });
+            onclick: () => pickTrial(kind, s.slot) });
         })),
       slots.some((s) => !s.used && (use.get(s.slot) || []).length) && h("p", { class: "warn small" }, icon("alert"),
         ` ${slots.filter((s) => !s.used && (use.get(s.slot) || []).length).map((s) => `${tag(kind, s.slot)} (${presetNames(use.get(s.slot))})`).join(", ")}: presets point to an empty slot and play without ${K.without}.`)));
-  if (kind === "nam") {
+  if (kind === "nam" && app.nam.models.some((m) => !m.user && m.used)) {   // (OpenPocket Bass: none)
     const fact = app.nam.models.filter((m) => !m.user);
     el.append(h("details", { class: "factory" }, h("summary", { text: `${fact.length} factory models` }),
       h("div", { class: "fact" }, fact.map((m) => h("span", { text: m.name }))), h("p", { class: "dim", text: "Built into the firmware: they need no slot and cannot be changed." })));
@@ -290,6 +435,7 @@ function render(kind) {
       : `This browser does not let the page keep files: the library lasts until the page is closed.` }),
     h("div", { class: "slots lib", id: `${kind}lib` }, rest.length ? rest.map((e) => h("div", { class: "srow" },
       h("span", { class: "nm" }, h("b", { text: e.name }), sourceLine(e)),
+      h("button", { type: "button", class: "btn small", text: "Try", title: "Hear it on the pedal before it takes a slot", onclick: () => startTrial(kind, { name: e.name, bytes: e.bytes, detail: e.detail, source: e.source, id: e.id }) }),
       h("button", { type: "button", class: "btn small", text: "Send to the pedal", onclick: () => sendToPedal(kind, e) }),
       h("button", { type: "button", class: "btn icon small", "aria-label": `Delete ${e.name} from the library`, onclick: () => forget(kind, e) }, icon("x"))))
       : h("p", { class: "dim empty-note", text: libList[kind].length ? `All ${plural(libList[kind].length, K.thing)} in the library ${libList[kind].length === 1 ? "is" : "are"} on the pedal.` : `Nothing yet. Add ${B.files}, or drop them on this panel.` })));
@@ -436,6 +582,7 @@ export async function initModels() {
   lib = await Library.open();
   on("assets", (kind) => { render(kind); if (kind === "nam") renderT3k(); });
   on("bank", () => { if (app.conn === "ready") for (const k of ["nam", "ir"]) if (has(k)) render(k); });
-  on("conn", () => { if (app.conn !== "ready") { queue.nam = []; queue.ir = []; } for (const k of ["nam", "ir"]) render(k); renderT3k(); });
+  on("conn", () => { if (app.conn !== "ready") { queue.nam = []; queue.ir = []; trial.kind = null; trial.live = false; } for (const k of ["nam", "ir"]) render(k); renderT3k(); });
+  on("state", () => { if (trial.kind && trial.live && app.view === "models") { const el = $(`${trial.kind}trial`)?.querySelector(".trial-ctl"); if (el && !el.contains(document.activeElement)) render(trial.kind); } });
   for (const k of ["nam", "ir"]) dropTarget($(k), BANKS[k].accept, (files) => { if (has(k)) addFiles(k, files); });
 }

@@ -40,7 +40,10 @@ int px_type_fixed(int b);
 /* OpenPocket Bass: the AMP's 6th setting, LEVEL (+-12 dB), is kept in an unused block's first setting (presets keep 5 a block) */
 #define PX_AMP_LVL_B PX_B_SFX
 #define PX_AMP_LVL_K 0
-/* ... and the amp's three band frequencies in its 1st..3rd (px_amp_band_hz: band 0 BASS, 1 MID, 2 TREBLE, v 0..100) */
+/* the amp's three tone bands, at fixed frequencies (px_amp_band_hz: band 0 LOW, 1 MID, 2 HIGH; v is ignored) */
+#define PX_AMP_LOW_HZ 100.0f
+#define PX_AMP_MID_HZ 600.0f
+#define PX_AMP_HIGH_HZ 3000.0f
 float px_amp_band_hz(int band, int v);    /* OpenPocket Bass: the one type a block has (AMP: NAM, CAB: USER IR), -1: chosen */    /* OpenPocket Bass: 1 = the block is in the chain (GATE COMP PITCH EQ AMP CAB) */
 
 enum { PX_CMP_SQUASH, PX_CMP_STUDIO, PX_CMP_OPTO, PX_CMP_SWELL, PX_CMP_COUNT };

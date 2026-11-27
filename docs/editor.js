@@ -8,6 +8,7 @@ import { initPresets, loadBank, refreshSlots, refreshBank, stepPreset, save, com
 import { initSound } from "./edsound.js";
 import { initModels, loadAssets } from "./edmodels.js";
 import { initMidi } from "./edmidi.js";
+import { startLang } from "./edlang.js";
 
 let pingTimer = null, connecting = false, progress = 0;
 
@@ -216,6 +217,7 @@ function renderConnPop() {
 }
 
 // ---- start ----
+startLang();                                      // OpenPocket Bass: in Portuguese (edlang.js), ?lang=en for English
 initPresets(); initSound(); initMidi();
 await initModels();
 on("view-go", (v) => setView(v));

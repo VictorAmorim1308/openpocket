@@ -58,7 +58,7 @@ $CC -O2 -Iengine -Ifirmware tests/engine/ir_test.c firmware/px_math.c -lm -o bui
 # from firmware/px_audio.h), and with PX_BASS the bass factory presets
 awk '/---- tuner: the interrupt stores/{f=1} f{print} f&&/^    return TN_SR \/ tf;/{getline; print; exit}' firmware/px_audio.h > build/tuner_copy.h
 $CC -O2 -Iengine -Ifirmware -Ibuild tests/engine/bass_test.c firmware/px_math.c -lm -o build/bass_test && build/bass_test | tail -1
-$CC -O2 -DPX_BASS=1 -Iengine -Ifirmware -Ibuild tests/engine/bass_test.c firmware/px_math.c -lm -o build/bass_test_b && build/bass_test_b | tail -1
+$CC -O2 -DPX_BASS=1 -DPX_NAM_NO_FACTORY=0 -Iengine -Ifirmware -Ibuild tests/engine/bass_test.c firmware/px_math.c -lm -o build/bass_test_b && build/bass_test_b | tail -1
 # OpenPocket Bass: the BlackBox backup page's reads (docs/pxbackup.js) against a simulated stock BlackBox
 node tests/test_backup.mjs | tail -1
 node tests/test_restore.mjs | tail -1

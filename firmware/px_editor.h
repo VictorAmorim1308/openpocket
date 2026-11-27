@@ -36,7 +36,14 @@ enum { ED_INFO = 1, ED_CAT_BLOCK, ED_CAT_TYPE, ED_TEXTS, ED_STATE, ED_SET, ED_OR
        ED_FOCUS, ED_LIST, ED_SLOT_GET, ED_SLOT_PUT, ED_COMMIT, ED_SAVE, ED_WATCH, ED_PING,
        ED_NAM_LIST, ED_NAM_WRITE, ED_NAM_COMMIT, ED_NAM_ERASE, ED_DIAG,
        ED_IR_LIST, ED_IR_WRITE, ED_IR_COMMIT, ED_IR_ERASE,     /* v38: 24..27 */
-       ED_USB_AUDIO };                                         /* v42: 28 */
+       ED_USB_AUDIO,                                           /* v42: 28 */
+       ED_NAM_PREVIEW, ED_IR_PREVIEW, ED_NAM_RENAME, ED_IR_RENAME };   /* OpenPocket Bass: 29..32 */
+/* a preview ends: the slot it posed as plays what it really holds again */
+static void ed_pv_end(void)
+{
+    if (nm_pv != 0xFFu) { const uint32_t s = nm_pv; nm_pv = 0xFFu; nm_changed(s); }
+    if (ir_pv != 0xFFu) { const uint32_t s = ir_pv; ir_pv = 0xFFu; ir_changed(s); }
+}
 
 static uint8_t ed_out[1024];
 static uint32_t ed_n;
@@ -264,12 +271,14 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
     case ED_NAM_WRITE:                                 /* piece (2 bytes, 7 bits each), then 128 packed bytes */
         if (n < 2u) return;
         i = a[0] | (uint32_t)a[1] << 7;
+        if (i == 0u) ed_pv_end();                      /* (a new upload: the staging buffer changes under a preview) */
         rc = nm_write_piece(i, a + 2, n - 2u);
         ed_b(a[0]); ed_b(a[1]); ed_b((uint32_t)rc);
         break;
     case ED_NAM_COMMIT:
     case ED_NAM_ERASE:
         if (n < 1u) return;
+        if (nm_pv != 0xFFu && (cmd == ED_NAM_COMMIT || nm_pv == a[0])) ed_pv_end();   /* (saved, or its slot emptied) */
         rc = cmd == ED_NAM_COMMIT ? nm_commit(a[0]) : nm_erase(a[0]);
         nm_changed(a[0]);                              /* a sound playing that slot reloads it */
         ed_b(a[0]); ed_b((uint32_t)rc);
@@ -283,16 +292,43 @@ static void ed_handle(const uint8_t *a, uint32_t n)   /* a: the args, after the 
     case ED_IR_WRITE:                                  /* piece (2 bytes, 7 bits each), then 128 packed bytes */
         if (n < 2u) return;
         i = a[0] | (uint32_t)a[1] << 7;
+        if (i == 0u) ed_pv_end();
         rc = ir_write_piece(i, a + 2, n - 2u);
         ed_b(a[0]); ed_b(a[1]); ed_b((uint32_t)rc);
         break;
     case ED_IR_COMMIT:
     case ED_IR_ERASE:
         if (n < 1u) return;
+        if (ir_pv != 0xFFu && (cmd == ED_IR_COMMIT || ir_pv == a[0])) ed_pv_end();
         rc = cmd == ED_IR_COMMIT ? ir_commit(a[0]) : ir_erase(a[0]);
         ir_changed(a[0]);                              /* a sound playing that slot reloads it */
         ed_b(a[0]); ed_b((uint32_t)rc);
         break;
+    case ED_NAM_PREVIEW:                               /* OpenPocket Bass: slot (0..15) the staged model plays as, 127: stop */
+    case ED_IR_PREVIEW:                                /* the same for the staged IR (slot 0..PX_IR_N-1) */
+        if (n < 1u) return;
+        ed_pv_end();
+        rc = 0;
+        if (a[0] != 127u) {
+            const int nam = cmd == ED_NAM_PREVIEW;
+            if (a[0] >= (nam ? PX_NAM_NUSER : (uint32_t)PX_IR_N) || (nam ? nm_check() : ir_check())) rc = 1;
+            else if (nam) { nm_pv = (uint8_t)a[0]; nm_changed(a[0]); }
+            else { ir_pv = (uint8_t)a[0]; ir_changed(a[0]); }
+        }
+        ed_b(a[0]); ed_b((uint32_t)rc);
+        break;
+    case ED_NAM_RENAME:                                /* OpenPocket Bass: slot, name string: the slot renamed in place */
+    case ED_IR_RENAME: {
+        char nm[12];
+        if (n < 2u) return;
+        for (i = 0; i < 11u && i + 1u < n && a[1 + i]; i++) nm[i] = (char)a[1 + i];
+        nm[i] = 0;
+        ed_pv_end();                                   /* (the staging buffer is used) */
+        rc = cmd == ED_NAM_RENAME ? nm_rename(a[0], nm) : ir_rename(a[0], nm);
+        if (cmd == ED_NAM_RENAME) nm_changed(a[0]); else ir_changed(a[0]);
+        ed_b(a[0]); ed_b((uint32_t)rc);
+        break;
+    }
     case ED_USB_AUDIO:                                 /* v42: the USB AUDIO setting (no argument: read), its streams */
 #if OP_UAUDIO
         rc = 0;

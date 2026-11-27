@@ -49,6 +49,7 @@ typedef char ir_stage_check[sizeof nm_stage >= IR_BYTES ? 1 : -1];
 
 static struct { uint8_t ok; char name[12]; } ir_cache[PX_IR_N];
 static uint32_t ir_gen;
+static uint8_t ir_pv = 0xFFu;                    /* OpenPocket Bass: IR_PREVIEW, as nm_pv (px_models.h): the staged IR in slot ir_pv */
 
 static int ir_hdr_ok(const ir_hdr_t *h)
 {
@@ -78,6 +79,16 @@ static void ir_scan(void)
 /* the engine's hook (engine/px_dsp.h): the name from the cache, the samples from the flash (checked) */
 int px_ir_user(int slot, char *name12, float *h)
 {
+    if (slot >= 0 && slot == (int)ir_pv) {       /* the preview: the staged record */
+        const ir_hdr_t *hd = (const ir_hdr_t *)ir_stage;
+        const int16_t *sm = (const int16_t *)(ir_stage + IR_HDR);
+        nm_name_clean(name12, hd->name);
+        if (h) {
+            const float k = hd->scale / 32767.0f;
+            for (int i = 0; i < PX_IR_LEN; i++) h[i] = i < (int)hd->n ? (float)sm[i] * k : 0.0f;
+        }
+        return 1;
+    }
     if (slot < 0 || slot >= PX_IR_N || !ir_cache[slot].ok) return 0;
     memcpy(name12, ir_cache[slot].name, 12);
     if (h) {
@@ -102,12 +113,17 @@ static int ir_write_piece(uint32_t idx, const uint8_t *packed, uint32_t n)
     uint32_t want = IR_BYTES - off < IR_CHUNK ? IR_BYTES - off : IR_CHUNK;
     return nm_unpack7(packed, n, ir_stage + off, want) == want ? 0 : 1;
 }
+static int ir_check(void)                        /* the staged IR: 0 good, 1 invalid */
+{
+    const ir_hdr_t *h = (const ir_hdr_t *)ir_stage;
+    if (!ir_hdr_ok(h) || h->ver != 2u) return 1;
+    return (uint16_t)ota_crc16(ir_stage + IR_HDR, PX_IR_TAPS * 2u, 0) != h->crc;
+}
 /* IR_COMMIT: the staged IR into slot s. 0 ok, 1 invalid, 2 flash */
 static int ir_commit(uint32_t s)
 {
     ir_hdr_t *h = (ir_hdr_t *)ir_stage;
-    if (s >= PX_IR_N || !ir_hdr_ok(h) || h->ver != 2u) return 1;
-    if ((uint16_t)ota_crc16(ir_stage + IR_HDR, PX_IR_TAPS * 2u, 0) != h->crc) return 1;
+    if (s >= PX_IR_N || ir_check()) return 1;
     nm_name_clean(h->name, h->name);
     const uint32_t base = ir_addr(s);
     uint32_t k;
@@ -129,6 +145,17 @@ static int ir_commit(uint32_t s)
     st_audio_hold(0);
     ir_scan();
     return rc;
+}
+/* OpenPocket Bass: IR_RENAME, as nm_rename (px_models.h): a version 2 slot read back, renamed, written again */
+static int ir_rename(uint32_t s, const char *name)
+{
+    ir_hdr_t *h = (ir_hdr_t *)ir_stage;
+    if (s >= PX_IR_N || !ir_cache[s].ok) return 1;
+    if (ota_fread(ir_addr(s), ir_stage, IR_HDR)) return 2;
+    if (!ir_hdr_ok(h) || h->ver != 2u) return 1;
+    if (ir_flash_rw(ir_addr(s), ir_stage + IR_HDR, IR_BYTES - IR_HDR, 0)) return 2;
+    nm_name_clean(h->name, name);
+    return ir_commit(s);
 }
 /* IR_ERASE: slot s emptied. 0 ok, 1 invalid, 2 flash */
 static int ir_erase(uint32_t s)

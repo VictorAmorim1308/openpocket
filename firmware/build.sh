@@ -56,8 +56,7 @@ fi
 FP="-mcpu=r3 -mfprev1"
 DSPDEF="-DPX_SR=44100.0f -DPX_OVERSAMPLE=4"
 DSPDEF="$DSPDEF -DPX_BASS=${OP_BASS:-1}"   # OpenPocket Bass: the bass factory presets and EQ -> AMP order (OP_BASS=0: the guitar ones)
-[ -n "$OP_BLE" ] && DSPDEF="$DSPDEF -DPXN_LEAN=1 -DPXN_HOT_RAM=1 -DPX_RUNS=0"
-[ -n "$OP_BT" ] && DSPDEF="$DSPDEF -DPX_NAM_NO_FACTORY=1"   # the audio image: no factory guitar NAM weights (engine/px_dsp.c nam_load)   # v40.2: the test image's flash is full (engine/px_nam.c; v40.4: px_dsp.c PX_RUNS)
+[ -n "$OP_BLE" ] && DSPDEF="$DSPDEF -DPXN_LEAN=1 -DPXN_HOT_RAM=1 -DPX_RUNS=0"   # v40.2: the test image's flash is full (engine/px_nam.c; v40.4: px_dsp.c PX_RUNS)
 INC="-I$HERE/inc -I$HERE/../engine"
 $CC $FP -Os -ffunction-sections -fno-builtin -Wall -Wno-unused-function $DSPDEF $BLEDEF -DOP_GUARD_STACK=$GUARD_STACK $INC \
     -I"$BSP/chip" -I"$BSP/boards/fm1" -include "$O/channel.h" -c "$HERE/openpocket.c" -o "$O/openpocket.o"

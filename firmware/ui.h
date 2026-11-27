@@ -114,11 +114,7 @@ static int ui_it_of(int k) { return ui_fixed() ? (k == 0 ? 0 : k + 1) : k + 2; }
 static uint32_t ui_row_y(int k) { return (ui_fixed() ? E_TYPE_Y - 2u : E_P0) + (uint32_t)k * E_ROW; }
 static uint8_t *ui_pv(int k) { return k >= PX_NPAR ? &PRESET.p[PX_AMP_LVL_B][PX_AMP_LVL_K] : &PRESET.p[ui_blk][k]; }
 static const char *ui_pname(int k) { return k >= PX_NPAR ? "LEVEL" : px_param_name((int)ui_blk, PRESET.type[ui_blk], k); }
-static int ui_amp_band(void)           /* the AMP band (0 BASS, 1 MID, 2 TREBLE) the page is on, -1: none */
-{
-    const int k = ui_k_of(ui_item);
-    return PX_BASS_UI && ui_blk == PX_B_AMP && k >= 2 && k <= 4 ? k - 2 : -1;
-}
+static int ui_amp_band(void) { return -1; }   /* (a test build moved the AMP's band frequencies here: they are fixed now) */
 static const char *ui_block_name(int b) { return b == PX_B_SYN ? "SYNTH" : px_block_name(b); }   /* (the documents' name) */
 
 /* v42: a setting that picks from a list (NAM MODEL, USER IR) steps one item a detent, skips the empty slots and shows its
@@ -605,14 +601,12 @@ static void draw_item(int it)
     else draw_type();
 }
 #if PX_BASS_UI
-static void amp_page(int force);
 static void eq_page(int force);
 #endif
 static void draw_edit(int force)
 {
 #if PX_BASS_UI
-    if (ui_blk == PX_B_AMP) { amp_page(force); return; }
-    if (ui_blk == PX_B_EQ) { eq_page(force); return; }
+    if (ui_blk == PX_B_EQ) { eq_page(force); return; }   /* (the AMP: plain rows, its bands named with their frequency) */
 #endif
     int type = PRESET.type[ui_blk], np = ui_np(), on = PRESET.on[ui_blk] != 0;
     if (force || uc.blk != (int)ui_blk || uc.type != type) {
@@ -637,8 +631,8 @@ static void draw_edit(int force)
 #if PX_BASS_UI
 /* ---- OpenPocket Bass: the AMP and EQ pages as graphs. One graph for both, 30 Hz..8 kHz (log) by +-12 dB, the curve
  * worked out from the filters the engine itself makes (px_tone_bq, px_bq_db), drawn in one pixel stream (no flicker),
- * its points on top; under it the frequencies, a line naming what the knob is on, then the AMP's GAIN and LEVEL knobs or
- * the EQ's five values. ---- */
+ * its points on top; under it the frequencies, a line naming what the knob is on, then the EQ's five values. (The AMP
+ * had one too, with moving bands: too fiddly; it is plain rows again.) ---- */
 #define GR_X  4u
 #define GR_Y  64u
 #define GR_W  232u
@@ -712,90 +706,7 @@ static void graph_ticks(void)          /* the frequencies under the graph (drawn
     lcd_rect(0, GR_Y + GR_H, 240, 15, UI_BG);
     for (int i = 0; i < 6; i++) { const int x = gr_x(TK[i]); ft_box((uint32_t)(x - 16 < 0 ? 0 : x - 16), GR_Y + GR_H + 1u, 32, TT[i], &FT_SM, UI_DIM, UI_BG, 1); }
 }
-static float ui_atan2(float y, float x)   /* (no atan2 in the pedal's maths: within 0.01 rad) */
-{
-    const float ax = x < 0 ? -x : x, ay = y < 0 ? -y : y, a = (ax < ay ? ax : ay) / ((ax > ay ? ax : ay) + 1e-9f), s = a * a;
-    float r = ((-0.0464964749f * s + 0.15931422f) * s - 0.327622764f) * s * a + a;
-    if (ay > ax) r = 1.57079637f - r;
-    if (x < 0) r = 3.14159274f - r;
-    return y < 0 ? -r : r;
-}
-/* a round knob, 40 x 40 at (x, y): its arc (270 degrees from bottom left) filled to v, the value in its face */
-static void knob_draw(uint32_t x0, uint32_t y0, int v, uint16_t col, uint16_t bg)
-{
-    const float av = (135.0f + 2.7f * (float)v) * 0.0174532925f, ca = cosf(av), sa = sinf(av);
-    lcd_win(x0, y0, 40, 40);
-    for (int j = 0; j < 40; j++) for (int i = 0; i < 40; i++) {
-        const float dx = (float)i - 19.5f, dy = (float)j - 19.5f, d2 = dx * dx + dy * dy;
-        uint16_t c = bg;
-        if (d2 <= 19.5f * 19.5f && d2 >= 15.0f * 15.0f) {
-            float t = ui_atan2(dy, dx) * 57.29578f - 135.0f;
-            while (t < 0.0f) t += 360.0f;
-            if (t <= 270.0f) c = t <= 2.7f * (float)v ? col : 0x3186;
-        } else if (d2 <= 13.0f * 13.0f) {
-            c = 0x18E3;
-            const float along = dx * ca + dy * sa, across = dx * sa - dy * ca;
-            if (along > 7.0f && across < 1.3f && across > -1.3f) c = WHT;
-        }
-        lcd_px(c);
-    }
-    lcd_end();
-    char b[6]; num3(b, (uint32_t)v);
-    ft_box(x0 + 11u, y0 + 13u, 18, b, &FT_SM, UI_TXT, 0x18E3, 1);
-}
 static uint32_t pg_key;                /* what the graph shows now (redrawn when it changes) */
-static void amp_page(int force)
-{
-    const uint8_t *q = PRESET.p[PX_B_AMP], *f = PRESET.p[PX_AMP_LVL_B];
-    const int on = PRESET.on[ui_blk] != 0, band = ui_amp_band(), ed = ui_mode == M_EDIT;
-    if (force || uc.blk != (int)ui_blk) {
-        draw_band(1);
-        lcd_rect(0, E_BAND, 240, GR_Y - E_BAND, UI_BG);
-        lcd_rect(0, GR_Y, GR_X, GR_H, UI_BG); lcd_rect(GR_X + GR_W, GR_Y, 240u - GR_X - GR_W, GR_H, UI_BG);
-        lcd_rect(0, GR_INFO_Y - 2u, 240, F_Y - GR_INFO_Y + 2u, UI_BG);
-        graph_ticks();
-        uc.blk = (int)ui_blk; uc.type = PRESET.type[ui_blk]; uc.item = -1; uc.mode = -1; uc.on = on; pg_key = 0;
-        for (int k = 0; k < PX_NPAR + 1; k++) uc.val[k] = 0xFF;
-        force = 1;
-    }
-    if (uc.on != on || uc.bnum != cur_preset || (uc.item == 1) != (ui_item == 1u)) { int was = uc.item; uc.item = (int)ui_item; draw_band(1); uc.item = was; uc.on = on; }
-    const int msel = ui_item == 0u;                    /* MODEL: the list row (draw_row 0 at the top) */
-    if (force || uc.val[0] != q[0] || (uc.item == 0) != msel || uc.mode != (int)ui_mode || ui_loading_row(0) != uc.row_ld) {
-        const int ld = ui_loading_row(0);
-        draw_row(0); uc.row_ld = ld;
-    }
-    uint32_t key = 2166136261u;
-    const uint8_t kb[8] = {q[2], q[3], q[4], f[1], f[2], f[3], (uint8_t)(band + 1), (uint8_t)(ed * 2 + ui_sub)};
-    for (int i = 0; i < 8; i++) key = (key ^ kb[i]) * 16777619u;
-    if (force || key != pg_key) {
-        float hz[3];
-        for (int i = 0; i < 3; i++) hz[i] = px_amp_band_hz(i, f[1 + i]);
-        graph_draw(PX_B_AMP, hz, 3, band, ed && band >= 0, 0.0f, 0.0f);
-        char b[40] = "";
-        if (band >= 0) {
-            static const char *const BN[3] = {"BASS ", "MID ", "TREBLE "};
-            b_str(b, BN[band]); hz_text(b, hz[band]); b_str(b, "   "); db_text(b, q[2 + band]);
-        } else { hz_text(b, hz[0]); b_str(b, " / "); hz_text(b, hz[1]); b_str(b, " / "); hz_text(b, hz[2]); }
-        ft_box(0, GR_INFO_Y, 240, b, &FT_SM, band >= 0 ? (ed ? UI_ACC : WHT) : UI_DIM, UI_BG, 1);
-        pg_key = key;
-    }
-    for (int i = 0; i < 2; i++) {                      /* GAIN (k 1) and LEVEL (k 5) */
-        const int k = i ? 5 : 1, v = *ui_pv(k), sel = (int)ui_item == ui_it_of(k), e = sel && ed;
-        const int was = uc.item == ui_it_of(k);
-        if (!force && uc.val[k] == v && sel == was && uc.mode == (int)ui_mode) continue;
-        const uint32_t x = i ? 124u : 8u;
-        const uint16_t bg = sel ? C_CARD : UI_BG;
-        ui_rbox(x, GR_LOW_Y, 108, 44, 6, sel ? (e ? UI_ACC : WHT) : UI_BG, UI_BG);
-        ui_rbox(x + 1u, GR_LOW_Y + 1u, 106, 42, 5, bg, sel ? (e ? UI_ACC : WHT) : UI_BG);
-        knob_draw(x + 3u, GR_LOW_Y + 2u, v, e ? UI_ACC : BLK_COL[PX_B_AMP], bg);
-        ft_box(x + 48u, GR_LOW_Y + 6u, 56, i ? "LEVEL" : "GAIN", &FT_SM, sel ? WHT : UI_DIM, bg, 0);
-        char b[12] = "";
-        if (i) { const int t = (v - 50) * 24; b_str(b, t > 0 ? "+" : t < 0 ? "-" : ""); b_num(b, (uint32_t)((t < 0 ? -t : t) / 100)); b_str(b, " DB"); }
-        ft_box(x + 48u, GR_LOW_Y + 23u, 56, b, &FT_SM, UI_DIM, bg, 0);
-        uc.val[k] = (uint8_t)v;
-    }
-    uc.item = (int)ui_item; uc.mode = (int)ui_mode;
-}
 /* the EQ: its points (BASS PEQ / PARAMETRIC: the low shelf, the middle, the high shelf; the others: their 5 bands) */
 static int eq_marks(float *hz, float *alo, float *ahi)
 {
@@ -965,11 +876,6 @@ static void ui_knob(int dd, int fast)
             int i = ui_pos_of(ui_blk), j = ui_pos_of(v[k]);
             uint8_t t = PRESET.order[i]; PRESET.order[i] = PRESET.order[j]; PRESET.order[j] = t;
         }
-    } else if (ui_mode == M_BLOCK && PX_BASS_UI && ui_blk == PX_B_AMP) {   /* the AMP page: ON, MODEL, the 3 points, GAIN, LEVEL */
-        static const uint8_t ORD[7] = {1, 0, 3, 4, 5, 2, 6};
-        int at = 0;
-        for (int i = 0; i < 7; i++) if (ORD[i] == ui_item) at = i;
-        ui_item = ORD[(at + 7 + (dd > 0 ? 1 : -1)) % 7];
     } else if (ui_mode == M_BLOCK) {                   /* v42: in the order drawn: ON (item 1) at the top, MODEL, the settings */
         int n = ui_nitems(), p = ui_item < 2u ? 1 - (int)ui_item : (int)ui_item;
         p = (p + n + dd) % n;
@@ -990,8 +896,9 @@ static void ui_knob(int dd, int fast)
                     if (ui_list_name((int)ui_blk, i, nm)) { PRESET.p[ui_blk][k] = (uint8_t)ui_list_val((int)ui_blk, i); break; }
                 return;
             }
-            uint8_t *pv = ui_amp_band() >= 0 && ui_sub == 0 ? &PRESET.p[PX_AMP_LVL_B][1 + ui_amp_band()] : ui_pv(k);   /* (a band: its frequency first) */
-            int v = *pv + dd * (fast ? 5 : 1);
+            uint8_t *pv = ui_pv(k);
+            const int eq = PX_BASS_UI && ui_blk == PX_B_EQ;   /* the EQ's graph: 2 a detent, 6 turned fast (a point crosses in ~20) */
+            int v = *pv + dd * (eq ? (fast ? 6 : 2) : (fast ? 5 : 1));
             if (v < 0) v = 0;
             if (v > 100) v = 100;
             *pv = (uint8_t)v;
@@ -1007,8 +914,7 @@ static void ui_push(void)
     else if (ui_mode == M_BLOCK) {
         if (ui_item == 1u) PRESET.on[ui_blk] ^= 1u;
         else { ui_mode = M_EDIT; ui_sub = 0; }
-    } else if (ui_amp_band() >= 0 && ui_sub == 0) ui_sub = 1;   /* an AMP band: its frequency, then its gain */
-    else ui_mode = M_BLOCK;
+    } else ui_mode = M_BLOCK;
 }
 static void ui_home(void) { if (ui_mode == M_MOVE) ui_move_cancel(); ui_mode = M_CHAIN; ui_item = 0; }
 

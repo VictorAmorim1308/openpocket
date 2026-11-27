@@ -54,6 +54,10 @@ The 12 blocks, by index: 0 GATE, 1 COMP, 2 PITCH, 3 SFX, 4 DRIVE, 5 AMP, 6 CAB, 
 | 26 IR_COMMIT | slot (0..7) | slot, rc (0 ok, 1 invalid: header, CRC; 2 flash). Checks the pieces received and writes them to the slot |
 | 27 IR_ERASE | slot (0..7) | slot, rc (0 ok, 1 invalid, 2 flash). Empties the slot |
 | 28 USB_AUDIO | nothing, or on (0/1) | on (0/1), rc (0 ok, 1 this firmware has no USB audio, 2 flash), state, n (20), then n counts of 4 bytes each (bits 0-6, 7-13, 14-20, 21-27). Without an argument it only reads. With one it sets the USB AUDIO setting and, if it changed, writes it to the flash; see "USB audio" below |
+| 29 NAM_PREVIEW | slot (0..15), or 127 | slot, rc (0 ok, 1 invalid). OpenPocket Bass. Checks the capture received with `NAM_WRITE` and plays it in place of that slot, from RAM, without writing the flash; 127 stops. A `NAM_WRITE` of piece 0, a `NAM_COMMIT`, or a `NAM_ERASE` of that slot also stops it |
+| 30 IR_PREVIEW | slot (0..19), or 127 | slot, rc. The same for an IR received with `IR_WRITE` |
+| 31 NAM_RENAME | slot, name (11 bytes at most) | slot, rc (0 ok, 1 empty or invalid, 2 flash). Writes the slot again under the new name: the capture itself is not sent again |
+| 32 IR_RENAME | slot, name | slot, rc. The same for an IR slot |
 
 ### NAM models (protocol 2)
 

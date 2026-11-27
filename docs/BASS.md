@@ -12,7 +12,7 @@ Os outros blocos continuam no firmware, só que desligados nos presets de baixo.
 | --- | --- |
 | EQ, tipo **BASS PEQ** | LOW (shelf em 80 Hz, ±12 dB) · MID FREQ (**40 Hz a 4 kHz**) · MID GAIN (±12 dB) · MID Q (0.4 a 6.0) · HIGH (shelf em 3,5 kHz, ±12 dB). O PARAMETRIC original só descia até 150 Hz. |
 | CAB, tipo **USER IR** | Ganhou **BLEND** (0 = só amp+IR, 100 = só a outra fonte) e **BLEND SRC**, que escolhe a fonte: **DI** é o baixo limpo pego na entrada do amp, então o BLEND doseia o amp e o IR juntos. **AMP** é a saída do amp sem o IR, então o BLEND doseia só a caixa. **DI INV** e **AMP INV** são as mesmas fontes com a polaridade invertida. |
-| PITCH, tipo **BASS OCTAVE** | Oitavador analógico de uma nota só (divisor flip-flop): DRY · SUB −1 · UP +1 · TONE (60 a 600 Hz, filtro do sub) · TRACK (100 a 500 Hz; mais baixo deixa o rastreio mais firme nas cordas graves). O disparo tem histerese pra não "gaguejar" no fim da nota, e o filtro da oitava acima acompanha a nota tocada. Fica **antes do EQ**, onde rastreia o baixo limpo. |
+| PITCH, tipo **BASS OCTAVE** | Oitavador analógico de uma nota só (divisor flip-flop): **DRY · SUB −1 · UP +1 · SUB TONE** (o brilho do sub: 0 é redondo, 100 é mais aberto). O rastreio é automático: a cada ataque o pedal mede a nota e o filtro de rastreio segue ela, do B grave até a casa 12 e acima. O volume do sub e da oitava acima segue o volume do baixo. Fica **antes do EQ**, onde rastreia o baixo limpo. |
 | MOD, tipo **BASS CHORUS** | RATE · DEPTH · MIX · **X-OVER** (50 a 500 Hz). Abaixo do X-OVER o grave passa seco, no estilo dos chorus de baixo. |
 | Afinador | Agora lê de **27,6 Hz a 551 Hz**: Si grave (30,9 Hz) do baixo de 5 cordas, Mi grave (41,2 Hz) e harmônicos na 12ª casa. O original começava em 61 Hz. |
 | Presets | 01 DI LIMPO · 02 AMP 1 · 03 AMP 1 BLEND · 04 AMP 2 · 05 AMP 2 BLEND · 06 GROWL · 07 SLAP · 08 CHORUS · 09 AMP 3 · 10 AMP 4 · 11 OITAVA · 12–52 USER (EQ → U1 → IR1, tudo flat) |
@@ -81,11 +81,13 @@ tirados. Os botões MOD, DLY e REV abrem o EQ, a oitava e o compressor.
 ## AMP e CAB (OpenPocket Bass)
 
 - **AMP é sempre NAM** (não há outros amps pra escolher): MODEL (a captura), GAIN (o quanto a captura é empurrada: mais
-  saturação; metade da mudança de volume é compensada), BASS, MID (600 Hz), TREBLE e **LEVEL** (o volume do amp, ±12 dB).
+  saturação; metade da mudança de volume é compensada), **LOW 100 HZ**, **MID 600 HZ**, **HIGH 3 KHZ** (frequências
+  fixas, ±12 dB; as mesmas do estudo das frequências de baixo: peso, corpo e ataque) e **LEVEL** (o volume do amp, ±12 dB).
   O LEVEL é o 6º ajuste: fica guardado no primeiro ajuste do bloco SFX, que não existe na cadeia de baixo.
 - **CAB é sempre USER IR**: IR, LOW CUT, HIGH CUT, **MIX** e **LEVEL**. O MIX dosa só o gabinete: 100 é tudo IR, 0 é a
   saída do amp sem IR. O LEVEL é o volume do lado do IR (±12 dB), antes do MIX.
 - AMP e CAB não têm a linha de modelo: a captura e o IR ficam no topo da página.
+- O NAM só toca as **suas** capturas (U01–U16): os 12 amps de fábrica foram tirados do firmware de baixo.
 
 ## Volume do preset na tela principal
 
@@ -99,15 +101,23 @@ Segure o **PUSH** (página SAVE) e aperte **FX**: abre o nome. O knob anda pelas
 deixa trocar (o knob muda a letra, o PUSH confirma); o PUSH no OK volta pro SAVE com o nome novo; o HOME cancela. Depois
 o PUSH no SAVE grava o preset com o nome.
 
-## AMP e EQ com gráfico
+## EQ com gráfico
 
-As páginas do AMP e do EQ mostram a curva de verdade (as mesmas contas dos filtros do som), no mesmo gráfico: 30 Hz a 8 kHz,
-±12 dB.
+A página do EQ mostra a curva de verdade (as mesmas contas dos filtros do som): 30 Hz a 8 kHz, ±12 dB. O sino do médio anda
+com a frequência e a área sombreada abre ou fecha com o Q; os cinco valores ficam embaixo. No EQ cada clique do knob anda
+2 passos (6 girando rápido), e o encoder é lido numa interrupção, então giro rápido não perde passo. O AMP voltou a ser
+uma lista simples (sem gráfico), com as frequências fixas no nome de cada ajuste.
 
-- **AMP:** o knob passa por MODEL, os três pontos (BASS, MID, TREBLE), GAIN e LEVEL. Num ponto, o PUSH muda a
-  **frequência** (o ponto anda), o PUSH de novo muda o **ganho** (o ponto sobe ou desce), o PUSH mais uma vez volta.
-  BASS 40–250 Hz (padrão 100), MID 200–1800 Hz (600), TREBLE 1,5–6 kHz (3 kHz), todos ±12 dB.
-- **EQ:** o sino do médio anda com a frequência e a área sombreada abre ou fecha com o Q; os cinco valores ficam embaixo.
+## Editor web (OpenPocket Bass)
+
+- Em **português** (o botão EN no topo, ou `?lang=en`, volta pro inglês).
+- Página **Som**: a cadeia mostra só os blocos do baixo; AMP e CAB sem a troca de tipo; o EQ com o mesmo gráfico.
+- Página **Modelos**: **Carregar arquivo .nam / .wav para testar** (ou clicar num slot vazio). O arquivo vai pra memória
+  da pedaleira **sem gravar nada**: o bloco AMP (ou CAB) já toca com ele, e os ajustes GAIN/LOW/MID/HIGH/LEVEL ficam ali
+  no painel. Gostou? Escolha o slot, dê o nome (11 letras) e **Gravar na pedaleira**. Não gostou? **Descartar** volta o
+  som como estava. "Vários de uma vez" grava direto nos slots livres, sem testar.
+- Renomear um slot pelo editor funciona sempre (a pedaleira troca o nome no próprio slot), mesmo que o arquivo não esteja
+  na biblioteca do navegador.
 
 ## Bluetooth audio (test image)
 

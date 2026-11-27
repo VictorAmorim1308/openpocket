@@ -63,6 +63,7 @@ static void uad_poll(void);                     /* px_uaudio.h: the gaps between
 void fm1_timer5_irq(void)                       /* 10 kHz; USB at 2 kHz */
 {
     fm1_timer5_ack();
+    enc_sample();                               /* OpenPocket Bass: the encoder (openpocket.c) */
 #if OP_BLE_TEST                                 /* a ble_poll that does not return: the crash screen says where (ble_status.h) */
     if (ble_stall_tick())
         FM1_VEC[FM1_IRQ_TIMER5] = (uint32_t)(uintptr_t)(fm1_fatal_stubs + 6u * FM1_IRQ_TIMER5);

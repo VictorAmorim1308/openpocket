@@ -23,16 +23,17 @@ const TYPES = { ".html": "text/html", ".js": "text/javascript", ".json": "applic
 const server = createServer((req, res) => {
   try {
     const p = join(SITE, decodeURIComponent(req.url.split("?")[0]).replace(/\/$/, "/index.html"));
+    const body = readFileSync(p);
     res.writeHead(200, { "content-type": TYPES[extname(p)] || "application/octet-stream" });
-    res.end(readFileSync(p));
+    res.end(body);
   } catch (_) { res.writeHead(404); res.end(); }
 }).listen(0);
-const url = `http://127.0.0.1:${server.address().port}/editor.html`;
+const url = `http://127.0.0.1:${server.address().port}/editor.html?lang=en`;   // (OpenPocket Bass: the page is in Portuguese otherwise)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failed = 0;
 const ok = (c, what) => { console.log(`${what.padEnd(78)} ${c ? "ok" : "FAIL"}`); if (!c) failed++; };
 
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.OP_CHROME ? { executablePath: process.env.OP_CHROME } : {});
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, acceptDownloads: true });
 const page = await ctx.newPage();
 let sim = null, buf = "";
@@ -490,8 +491,14 @@ const free = (kind, slot) => page.locator(`#${kind}list .free [data-slot="${slot
   await clearToasts();
   const [ch] = await Promise.all([page.waitForEvent("filechooser"), free("ir", 2).click()]);
   await ch.setFiles(fw);
-  ok(await toast(/1 IR on the pedal/, 20000), "a WAV file loaded into IR slot 3 from its own row");
-  ok((await srow("ir", 2).textContent()).includes("GREEN 412") && /1 of 20 slots used/.test(await text("#ircap")) && /resampled from 48 kHz/.test(await text("#ir .queue")), "IR3 GREEN 412, with what was done to the file");
+  // (OpenPocket Bass: an empty slot's chip opens the file to try: it plays from the pedal's memory, nothing written, then Save puts it in the slot)
+  ok(await toast(/GREEN 412 plays on the pedal now/, 20000), "a WAV file opened from IR slot 3's chip plays on the pedal before it is saved");
+  ok(await page.locator("#irtrial").count() === 1 && await page.inputValue("#irtrialslot") === "2" && /0 of 20 slots used/.test(await text("#ircap")), "the trial panel: aimed at IR3, nothing written yet");
+  await page.fill("#irtrialname", "Green 4x12");
+  await clearToasts();
+  await page.click("#irtrialsave");
+  ok(await toast(/GREEN 4X12 is in IR3/, 30000), "Save: written into IR3 under the name chosen");
+  ok((await srow("ir", 2).textContent()).includes("GREEN 4X12") && /1 of 20 slots used/.test(await text("#ircap")), "IR3 GREEN 4X12");
   ok((await pedalState()).writesOk, "the flash was written only inside the preset store, the model slots and the IR slots");
 }
 

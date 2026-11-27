@@ -554,3 +554,27 @@ a.tone-u[href] { text-decoration: underline; }
 @media (min-width: 900px) {
   body[data-view="presets"] #view-sound { display: block; }
 }
+
+/* OpenPocket Bass: the EQ's curve (edsound.js renderGraph), as the pedal draws it */
+.eqgraph { margin: 4px 0 14px; background: #0b0d0c; border: 1px solid var(--line, #2a2d2b); border-radius: 10px; padding: 6px; }
+.eqgraph[hidden] { display: none; }
+.eqsvg { width: 100%; height: auto; display: block; }
+.eqsvg .g { stroke: #222724; stroke-width: 1; }
+.eqsvg .z { stroke: #3a3f3c; stroke-width: 1.2; }
+.eqsvg .t { fill: #6c736f; font: 600 10px Inter, system-ui, sans-serif; }
+.eqsvg .c { fill: none; stroke: var(--c, #6f6); stroke-width: 2.5; stroke-linejoin: round; }
+.eqsvg .pk, .eqsvg .sh { fill: #0b0d0c; stroke: var(--c, #6f6); stroke-width: 2; }
+.type[hidden] { display: none; }
+/* OpenPocket Bass: a file tried on the pedal before it takes a slot (edmodels.js trialPanel) */
+.trial { border: 1px solid var(--acc, #f5a623); border-radius: 12px; padding: 14px 16px; margin: 12px 0; background: color-mix(in srgb, var(--acc, #f5a623) 6%, transparent); display: grid; gap: 10px; }
+.trial-h { display: flex; align-items: center; gap: 10px; }
+.trial-h b { font-size: 15px; word-break: break-all; }
+.trial .chip.on { background: #1f3d24; color: #7dff8a; border-color: #2f6b38; }
+.trial-ctl { display: grid; gap: 4px; }
+.trial-ctl .prm { grid-template-columns: 120px minmax(0, 1fr) 64px; }
+.trial-f { display: flex; flex-wrap: wrap; gap: 12px 20px; }
+.trial-f label { display: flex; align-items: center; gap: 8px; }
+.trial-f label > span:first-child { color: var(--dim, #9aa19d); font-size: 13px; }
+.trial-f input { width: 14ch; text-transform: uppercase; font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line, #2a2d2b); background: var(--bg, #0d0f0e); color: inherit; }
+.trial-f select { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line, #2a2d2b); background: var(--bg, #0d0f0e); color: inherit; }
+.trial-a { display: flex; gap: 10px; }

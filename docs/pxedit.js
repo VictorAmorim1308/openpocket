@@ -10,6 +10,7 @@ const H = [0x7D, 0x4F, 0x50];
 export const C = { INFO: 1, CAT_BLOCK: 2, CAT_TYPE: 3, TEXTS: 4, STATE: 5, SET: 6, ORDER: 7, NAME: 8, PUT: 9, SELECT: 10,
   FOCUS: 11, LIST: 12, SLOT_GET: 13, SLOT_PUT: 14, COMMIT: 15, SAVE: 16, WATCH: 17, PING: 18,
   NAM_LIST: 19, NAM_WRITE: 20, NAM_COMMIT: 21, NAM_ERASE: 22, DIAG: 23, IR_LIST: 24, IR_WRITE: 25, IR_COMMIT: 26, IR_ERASE: 27,
+  NAM_PREVIEW: 29, IR_PREVIEW: 30, NAM_RENAME: 31, IR_RENAME: 32,
   USB_AUDIO: 28 };
 export const NAM_CHUNK = 112;     // bytes per NAM_WRITE (firmware/px_models.h NM_CHUNK)
 export const P_SIZE = 110;
@@ -98,6 +99,14 @@ export class Editor {
         catch (e2) { if (e2.code === "timeout" && this.onLost) this.onLost(); throw e2; }
       }
     };
+    const p = this.queue.then(run, run);
+    this.queue = p.catch(() => {});
+    return p;
+  }
+
+  // one request in the queue, no retry and no "lost" after a timeout (a command older firmware does not know)
+  _try(cmd, args, timeout) {
+    const run = () => this._once(cmd, args, timeout);
     const p = this.queue.then(run, run);
     this.queue = p.catch(() => {});
     return p;
@@ -253,17 +262,38 @@ export class Editor {
   }
   // a packed model (pxnam.js packModel) into user slot `slot`: pieces, then the flash write. rc 0 ok, 1 invalid, 2 flash
   async namUpload(slot, bytes, progress = () => {}) {
-    if (bytes.length !== SLOT_BYTES) throw new Error("model: wrong size");
-    const n = Math.ceil(bytes.length / NAM_CHUNK);
-    for (let i = 0; i < n; i++) {
-      const piece = bytes.slice(i * NAM_CHUNK, (i + 1) * NAM_CHUNK);
-      const r = await this.request(C.NAM_WRITE, [i & 0x7F, i >> 7, ...pack7(piece)]);
-      if (r[2]) throw new Error(`model: piece ${i} refused`);
-      progress((i + 1) / (n + 1));
-    }
+    await this.namStage(bytes, (f) => progress(f * 0.95));
     const rc = (await this.request(C.NAM_COMMIT, [slot], 6000))[1];
     progress(1);
     return rc;
+  }
+  // OpenPocket Bass: the model's pieces into the pedal's staging buffer only (for a preview); `only`: just these pieces
+  // (the header, piece 0, after a rename: its CRC covers the weights alone)
+  async namStage(bytes, progress = () => {}, only) {
+    if (bytes.length !== SLOT_BYTES) throw new Error("model: wrong size");
+    const n = Math.ceil(bytes.length / NAM_CHUNK), list = only || [...Array(n).keys()];
+    for (const [j, i] of list.entries()) {
+      const piece = bytes.slice(i * NAM_CHUNK, (i + 1) * NAM_CHUNK);
+      const r = await this.request(C.NAM_WRITE, [i & 0x7F, i >> 7, ...pack7(piece)]);
+      if (r[2]) throw new Error(`model: piece ${i} refused`);
+      progress((j + 1) / list.length);
+    }
+  }
+  // the staged model plays as if user slot `slot` held it (nothing written); slot null: stop. rc 0 ok, 1 invalid,
+  // null: this firmware has no preview (it does not answer)
+  async namPreview(slot) {
+    try { return (await this._try(C.NAM_PREVIEW, [slot === null ? 127 : slot], 2500))[1]; }
+    catch (e) { if (e.code === "timeout") return null; throw e; }
+  }
+  // the staged model into user slot `slot` (after namStage). rc 0 ok, 1 invalid, 2 flash
+  async namCommit(slot) { return (await this.request(C.NAM_COMMIT, [slot], 6000))[1]; }
+  // OpenPocket Bass: a slot renamed on the pedal itself (no file needed). rc 0 ok, 1 invalid, 2 flash; null: not in this firmware
+  async namRename(slot, name) { return this._rename(C.NAM_RENAME, slot, name); }
+  async irRename(slot, name) { return this._rename(C.IR_RENAME, slot, name); }
+  async _rename(cmd, slot, name) {
+    const s = [...String(name)].slice(0, 11).map((c) => { const k = c.charCodeAt(0); return k >= 32 && k <= 126 ? k : 63; });
+    try { return (await this._try(cmd, [slot, ...s, 0], 6000))[1]; }
+    catch (e) { if (e.code === "timeout") return null; throw e; }
   }
   async namErase(slot) { return (await this.request(C.NAM_ERASE, [slot], 6000))[1]; }
   // v38 (protocol 3): cabinet IRs. list -> [{ slot, used, name }]
@@ -276,18 +306,26 @@ export class Editor {
   }
   // a packed IR (pxir.js packIr) into slot `slot`: pieces, then the flash write. rc 0 ok, 1 invalid, 2 flash
   async irUpload(slot, bytes, progress = () => {}) {
-    if (bytes.length !== IR_BYTES) throw new Error("IR: wrong size");
-    const n = Math.ceil(bytes.length / IR_CHUNK);
-    for (let i = 0; i < n; i++) {
-      const piece = bytes.slice(i * IR_CHUNK, (i + 1) * IR_CHUNK);
-      const r = await this.request(C.IR_WRITE, [i & 0x7F, i >> 7, ...pack7(piece)]);
-      if (r[2]) throw new Error(`IR: piece ${i} refused`);
-      progress((i + 1) / (n + 1));
-    }
+    await this.irStage(bytes, (f) => progress(f * 0.95));
     const rc = (await this.request(C.IR_COMMIT, [slot], 6000))[1];
     progress(1);
     return rc;
   }
+  async irStage(bytes, progress = () => {}, only) {
+    if (bytes.length !== IR_BYTES) throw new Error("IR: wrong size");
+    const n = Math.ceil(bytes.length / IR_CHUNK), list = only || [...Array(n).keys()];
+    for (const [j, i] of list.entries()) {
+      const piece = bytes.slice(i * IR_CHUNK, (i + 1) * IR_CHUNK);
+      const r = await this.request(C.IR_WRITE, [i & 0x7F, i >> 7, ...pack7(piece)]);
+      if (r[2]) throw new Error(`IR: piece ${i} refused`);
+      progress((j + 1) / list.length);
+    }
+  }
+  async irPreview(slot) {
+    try { return (await this._try(C.IR_PREVIEW, [slot === null ? 127 : slot], 2500))[1]; }
+    catch (e) { if (e.code === "timeout") return null; throw e; }
+  }
+  async irCommit(slot) { return (await this.request(C.IR_COMMIT, [slot], 6000))[1]; }
   async irErase(slot) { return (await this.request(C.IR_ERASE, [slot], 6000))[1]; }
   // v42 (protocol 4): USB AUDIO, the pedal as a USB sound card (docs/USB-AUDIO.md). usbAudio() reads the setting and
   // the streams; usbAudio(true / false) sets it first: the pedal then leaves USB for a second and comes back as a

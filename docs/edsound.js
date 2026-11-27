@@ -179,13 +179,14 @@ function renderPage(fromPush) {
   $("block").style.setProperty("--c", B.color);
   $("block").classList.toggle("off", !is);
   $("bname").textContent = B.name;
-  const pos = p.order.indexOf(b);
-  $("bpos").textContent = `${pos + 1} of ${p.order.length} in the chain`;
+  const pos = p.order.indexOf(b), shown = p.order.filter((x) => blk(x).used !== false);   // (OpenPocket Bass: the blocks in the chain)
+  $("bpos").textContent = `${shown.indexOf(b) + 1} of ${shown.length} in the chain`;
   const sw = $("onoff");
   sw.setAttribute("aria-checked", is ? "true" : "false");
   sw.setAttribute("aria-label", `${B.name} ${is ? "on" : "off"}`);
   sw.querySelector("span").textContent = is ? "On" : "Off";
-  $("mvl").disabled = pos <= 0; $("mvr").disabled = pos >= p.order.length - 1;
+  $("mvl").disabled = shown.indexOf(b) <= 0; $("mvr").disabled = shown.indexOf(b) >= shown.length - 1;
+  void pos;
   const sel = $("type");
   if (sel.dataset.b !== String(b) || sel.options.length !== B.types.length) {
     sel.textContent = "";
@@ -196,6 +197,7 @@ function renderPage(fromPush) {
   sel.setAttribute("aria-label", `${B.name} type`);
   const one = B.types.length < 2 || B.fixed >= 0;   // (OpenPocket Bass: AMP is NAM, CAB is USER IR)
   sel.disabled = one; $("tprev").disabled = one; $("tnext").disabled = one;
+  $("block").querySelector(".type").hidden = B.fixed >= 0;   // (a block of one type has no type row, as on the pedal)
 
   const box = $("params");
   const names = (T.params[0] && T.params[0].texts ? T.params[0].texts.join("|") : "");     // (the slots' names change)
@@ -210,18 +212,19 @@ function renderPage(fromPush) {
           h("button", { type: "button", role: "radio", "data-v": o.value, text: o.label, onclick: () => { sendParam(b, k, o.value); showVal(k); } })));
       } else if (opts) {
         ctl = h("select", { id, class: "choice", onchange: () => { sendParam(b, k, +ctl.value); showVal(k); renderNote(); } });
-        const groups = opts[0].index === undefined ? null : [["Factory", opts.filter((o) => o.slot < 0)], [opts[0].kind === "nam" ? "Your captures" : "Your IRs", opts.filter((o) => o.slot >= 0)]];
+        const groups = opts[0].index === undefined ? null : [["Factory", opts.filter((o) => o.slot < 0 && app.nam.models[o.index] && app.nam.models[o.index].used)],
+          [opts[0].kind === "nam" ? "Your captures" : "Your IRs", opts.filter((o) => o.slot >= 0)]];   // (OpenPocket Bass: no factory models)
         const opt = (o) => h("option", { value: o.value, text: o.tag ? `${o.tag}  ${o.empty ? "empty" : o.label}` : o.label, disabled: !!o.empty });
         if (groups) for (const [name, list] of groups) { if (list.length) ctl.append(h("optgroup", { label: name }, list.map(opt))); }
         else ctl.append(...opts.map(opt));
       } else {
         ctl = h("input", { type: "range", id, min: 0, max: 100, step: 1 });
-        ctl.oninput = () => { showVal(k); sendParam(b, k, +ctl.value); };
+        ctl.oninput = () => { showVal(k); sendParam(b, k, +ctl.value); renderGraph(); };
         ctl.onpointerdown = () => { ctl.dataset.held = "1"; };
         ctl.onpointerup = ctl.onpointercancel = () => { delete ctl.dataset.held; };
       }
       const step = (d) => h("button", { type: "button", class: "nudge", tabIndex: -1, "aria-label": `${param.name} ${d < 0 ? "down" : "up"} one step`,
-        onclick: () => { const v = Math.max(0, Math.min(100, +ctl.value + d)); ctl.value = v; showVal(k); sendParam(b, k, v); } }, icon(d < 0 ? "minus" : "plus"));
+        onclick: () => { const v = Math.max(0, Math.min(100, +ctl.value + d)); ctl.value = v; showVal(k); sendParam(b, k, v); renderGraph(); } }, icon(d < 0 ? "minus" : "plus"));
       const range = ctl.type === "range";
       box.append(h("div", { class: `prm${range ? "" : " one"}` },
         h("label", { for: range || ctl.tagName === "SELECT" ? id : null, text: param.name }),
@@ -229,11 +232,13 @@ function renderPage(fromPush) {
         range && h("output", { class: "val", for: id })));
     });
     if (!T.params.length) box.append(h("p", { class: "dim", text: "This type has no settings." }));
-    if (ampLevel(b)) {   // OpenPocket Bass: the AMP's LEVEL and its 3 band frequencies, kept in the SFX block (not in the chain)
+    if (ampLevel(b)) {   // OpenPocket Bass: the AMP's LEVEL, kept in the SFX block (not in the chain)
       AMP_X.forEach(([name, k]) => {
         const ctl = h("input", { type: "range", id: `pampx${k}`, min: 0, max: 100, step: 1 });
         ctl.oninput = () => { showAmpX(k); sendParam(SFX, k, +ctl.value); };
-        box.append(h("div", { class: "prm" }, h("label", { for: `pampx${k}`, text: name }), ctl, h("output", { class: "val", for: `pampx${k}` })));
+        const step = (d) => h("button", { type: "button", class: "nudge", tabIndex: -1, "aria-label": `${name} ${d < 0 ? "down" : "up"} one step`,
+          onclick: () => { const v = Math.max(0, Math.min(100, +ctl.value + d)); ctl.value = v; showAmpX(k); sendParam(SFX, k, v); } }, icon(d < 0 ? "minus" : "plus"));
+        box.append(h("div", { class: "prm" }, h("label", { for: `pampx${k}`, text: name }), step(-1), ctl, step(1), h("output", { class: "val", for: `pampx${k}` })));
       });
     }
     box.dataset.sig = sig;
@@ -245,18 +250,72 @@ function renderPage(fromPush) {
     else if (c.tagName === "SELECT") { const o = optionOf(paramChoices(b, p.type[b], k, T.params[k]), v); c.value = o.value; }
     showVal(k);
   });
+  renderGraph();
   renderNote();
 }
 const SFX = 3;                                        // (engine/px_dsp.h PX_AMP_LVL_B: PX_B_SFX)
 const ampLevel = (b) => blk(b).label === "AMP" && blk(b).fixed >= 0;
-// (engine/px_dsp.c px_amp_band_hz: BASS 40..250 Hz, MID 200..1800 Hz, TREBLE 1.5..6 kHz, log; LEVEL +-12 dB)
-const AMP_X = [["LEVEL", 0], ["BASS FREQ", 1], ["MID FREQ", 2], ["TREBLE FREQ", 3]];
-const ampHz = (k, v) => [40 * 6.25 ** (v / 100), 200 * 9 ** (v / 100), 1500 * 4 ** (v / 100)][k - 1];
+// (LEVEL +-12 dB; the AMP's tone bands are fixed now: LOW 100 Hz, MID 600 Hz, HIGH 3 kHz, engine/px_dsp.h)
+const AMP_X = [["LEVEL", 0]];
 function showAmpX(k) {
   const c = $(`pampx${k}`); if (!c) return;
-  const v = +c.value, hz = k ? ampHz(k, v) : 0;
+  const v = +c.value, db = (v - 50) * 24 / 100;
   c.style.setProperty("--p", `${v}%`);
-  c.parentElement.querySelector(".val").textContent = k ? (hz >= 1000 ? `${(hz / 1000).toFixed(1)} kHz` : `${Math.round(hz)} Hz`) : `${(v - 50) * 24 / 100 > 0 ? "+" : ""}${((v - 50) * 24 / 100).toFixed(1)} dB`;
+  c.parentElement.querySelector(".val").textContent = `${db > 0 ? "+" : ""}${db.toFixed(1)} dB`;
+}
+// ---- OpenPocket Bass: the EQ's curve, as the pedal draws it (engine/px_dsp.c eq_design; 30 Hz..8 kHz, +-12 dB) ----
+const EQFS = 44100;
+function bqDesign(kind, f, q, db) {
+  const A = 10 ** (db / 40), w = 2 * Math.PI * f / EQFS, c = Math.cos(w), s = Math.sin(w);
+  if (kind === "peak") { const al = s / (2 * q); return [1 + al * A, -2 * c, 1 - al * A, 1 + al / A, -2 * c, 1 - al / A]; }
+  const al = s / 2 * Math.SQRT2, ap = A + 1, am = A - 1, tsa = 2 * Math.sqrt(A) * al;
+  if (kind === "low") return [A * (ap - am * c + tsa), 2 * A * (am - ap * c), A * (ap - am * c - tsa), ap + am * c + tsa, -2 * (am + ap * c), ap + am * c - tsa];
+  return [A * (ap + am * c + tsa), -2 * A * (am + ap * c), A * (ap + am * c - tsa), ap - am * c + tsa, 2 * (am - ap * c), ap - am * c - tsa];
+}
+function bqDb([b0, b1, b2, a0, a1, a2], f) {
+  const w = 2 * Math.PI * f / EQFS, c1 = Math.cos(w), s1 = Math.sin(w), c2 = Math.cos(2 * w), s2 = Math.sin(2 * w);
+  const nr = b0 + b1 * c1 + b2 * c2, ni = -(b1 * s1 + b2 * s2), dr = a0 + a1 * c1 + a2 * c2, di = -(a1 * s1 + a2 * s2);
+  return 10 * Math.log10((nr * nr + ni * ni) / (dr * dr + di * di));
+}
+// the EQ type's filters and its points [{ f, q, db, kind }], from the type's name (the pedal's catalogue) and its five values
+function eqBands(name, v) {
+  const d = (k) => (v[k] - 50) * 24 / 100, x = (k) => v[k] / 100;
+  if (name === "5 BAND") return [["low", 100, 1, d(0)], ["peak", 400, 1, d(1)], ["peak", 1000, 1, d(2)], ["peak", 2500, 1, d(3)], ["high", 6000, 1, d(4)]];
+  if (name === "GRAPHIC 5") return [80, 240, 750, 2200, 6600].map((f, k) => ["peak", f, 1.4, d(k)]);
+  if (name === "BASS PEQ") return [["low", 80, 1, d(0)], ["peak", 40 * 100 ** x(1), 0.4 + x(3) * 5.6, d(2)], ["high", 3500, 1, d(4)]];
+  if (name === "PARAMETRIC") return [["low", 100, 1, d(0)], ["peak", 150 * 33 ** x(1), 0.4 + x(3) * 5.6, d(2)], ["high", 5000, 1, d(4)]];
+  return null;
+}
+function renderGraph() {
+  const box = $("eqgraph"), b = app.focus, p = app.st.preset, B = blk(b);
+  const bands = B.label === "EQ" ? eqBands(typeOf(p, b).name, p.p[b]) : null;
+  box.hidden = !bands;
+  if (!bands) return;
+  const W = 640, H = 170, x0 = 34, x1 = W - 10, yc = H / 2, k = 6, lx = (f) => x0 + (x1 - x0) * Math.log(f / 30) / Math.log(8000 / 30);
+  const filt = bands.map(([kind, f, q, db]) => bqDesign(kind, f, q, db));
+  const pts = [];
+  for (let i = 0; i <= 160; i++) {
+    const f = 30 * (8000 / 30) ** (i / 160);
+    const db = Math.max(-13.5, Math.min(13.5, filt.reduce((a, c) => a + bqDb(c, f), 0)));
+    pts.push(`${lx(f).toFixed(1)},${(yc - db * k).toFixed(1)}`);
+  }
+  const NS = "http://www.w3.org/2000/svg", el = (t, a) => { const e = document.createElementNS(NS, t); for (const [n, v] of Object.entries(a)) e.setAttribute(n, v); return e; };
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, class: "eqsvg", role: "img", "aria-label": "The EQ's curve" });
+  for (const db of [-12, -6, 0, 6, 12]) {
+    svg.append(el("line", { x1: x0, x2: x1, y1: yc - db * k, y2: yc - db * k, class: db ? "g" : "z" }));
+    const t = el("text", { x: 4, y: yc - db * k + 4, class: "t" }); t.textContent = `${db > 0 ? "+" : ""}${db}`; svg.append(t);
+  }
+  for (const [f, lb] of [[40, "40"], [100, "100"], [250, "250"], [1000, "1K"], [2500, "2.5K"], [6000, "6K"]]) {
+    svg.append(el("line", { x1: lx(f), x2: lx(f), y1: 6, y2: H - 6, class: "g" }));
+    const t = el("text", { x: lx(f) + 3, y: H - 8, class: "t" }); t.textContent = lb; svg.append(t);
+  }
+  svg.append(el("polyline", { points: pts.join(" "), class: "c" }));
+  for (const [kind, f, , db] of bands) {
+    const y = yc - Math.max(-12, Math.min(12, filt.reduce((a, c) => a + bqDb(c, f), 0))) * k;
+    svg.append(el("circle", { cx: lx(f), cy: y, r: 5, class: kind === "peak" ? "pk" : "sh" }));
+    void db;
+  }
+  box.textContent = ""; box.append(svg);
 }
 function showVal(k) {
   const c = $(`p${k}`), b = app.focus, p = app.st.preset, param = typeOf(p, b).params[k];

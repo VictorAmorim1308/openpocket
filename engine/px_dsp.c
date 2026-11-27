@@ -76,10 +76,13 @@ static struct {
     float ir_lv;                                       /* CAB LEVEL (OpenPocket Bass), on the IR's output */
     px_bq mod_hpw, mod_hpd;
     float oct_ea, oct_er;
-    px_bq oct_ua, oct_ub;
+    px_bq oct_ua, oct_ub, oct_h1, oct_h2;
     int oct_n;
-    float oct_trk, oct_pk, oct_nk, oct_pkd, oct_amp, oct_ak, oct_fc;   /* BASS OCTAVE: TRACK (the tracking filter's top), the */
-} pxb;                                                       /* peaks held for the trigger, the sub's level */
+    float oct_trk, oct_pk, oct_nk, oct_pkd, oct_amp, oct_ak, oct_fc;   /* BASS OCTAVE: the tracking filter's top, the */
+    float oct_fe, oct_se, oct_be, oct_fka, oct_fkr, oct_sk;            /* peaks held for the trigger, the sub's level; the */
+    int oct_hold, oct_lt, oct_rn, oct_rt, oct_rc;               /* (oct_rn, oct_rt, oct_rp..: the raw period, before the tracking filter) */
+    float oct_rp, oct_rnk, oct_rprev, oct_ug;                                              /* input's fast and slow envelopes (a new note), the */
+} pxb;                                                                 /* filtered one's (the octave up's level) */
 float *px_cln_w;
 const float *px_cln_r;
 static inline float f01(uint8_t v) { return (float)(v > 100 ? 100 : v) * 0.01f; }
@@ -380,12 +383,13 @@ static const char *const PN_POLY[] = {"DRY", "OCT -1", "OCT +1"};
 static const char *const PN_WHAM[] = {"SHIFT", "MIX", "GLIDE"};
 static const char *const PN_HARM[] = {"INTERVAL", "MIX"};
 static const char *const PN_DET[] = {"CENTS", "MIX"};
-/* OpenPocket Bass: BASS OCTAVE. DRY, SUB -1 (the octave down), UP +1 (the octave up), TONE (the sub's filter), TRACK (the
- * tracking filter: lower = steadier on the low strings, higher = follows the high notes) */
-static const char *const PN_BOCT[] = {"DRY", "SUB -1", "UP +1", "TONE", "TRACK"};
+/* OpenPocket Bass: BASS OCTAVE. DRY (the note played), SUB -1 (the octave down), UP +1 (the octave up), SUB TONE (the
+ * sub's brightness: 60 Hz round .. 600 Hz buzzy). (A 5th setting, TRACK, capped the tracking: it lost the high notes; the
+ * tracking now covers the whole neck by itself.) */
+static const char *const PN_BOCT[] = {"DRY", "SUB -1", "UP +1", "SUB TONE"};
 static const tdef T_PITCH[PX_PIT_COUNT] = {
     {"OCTAVER", 5, PN_OCT}, {"POLY OCTAVE", 3, PN_POLY}, {"WHAMMY", 3, PN_WHAM}, {"HARMONIZER", 2, PN_HARM},
-    {"DETUNE", 2, PN_DET}, {"BASS OCTAVE", 5, PN_BOCT}};
+    {"DETUNE", 2, PN_DET}, {"BASS OCTAVE", 4, PN_BOCT}};
 
 static const char *const PN_AWAH[] = {"SENS", "RESO", "RANGE", "DECAY"};
 static const char *const PN_LWAH[] = {"RATE", "DEPTH", "RESO", "CENTER"};
@@ -549,7 +553,11 @@ static const tdef T_REV[PX_REV_COUNT] = {
 static const char *const PN_AMP[] = {"GAIN", "BASS", "MID", "TREBLE", "PRESENCE"};
 /* (OpenPocket Bass: GAIN drives the capture, half of its level change taken back; the amp's LEVEL is a 6th setting, kept
  * in the SFX block's first, a block the bass chain does not use: px_dsp.h PX_AMP_LVL_B) */
+#if PX_BASS
+static const char *const PN_NAM[] = {"MODEL", "GAIN", "LOW 100 HZ", "MID 600 HZ", "HIGH 3 KHZ"};   /* (px_amp_band_hz) */
+#else
 static const char *const PN_NAM[] = {"MODEL", "GAIN", "BASS", "MID", "TREBLE"};
+#endif
 static const char *const PN_CAB[] = {"BODY", "BRIGHT", "MIC"};
 #if PX_BASS
 /* OpenPocket Bass: MIX doses the cabinet alone: the amp's output without the IR against it through the IR (0: no IR);
@@ -678,8 +686,6 @@ int px_type_v34(int blk, int old)
 /* v38: USER IR's LOW CUT 20..400 Hz and HIGH CUT 20 kHz (0: off) .. 2 kHz, logarithmic */
 static float ir_lo_hz(int v) { return 20.0f * powf(20.0f, (float)v * 0.01f); }
 static float ir_hi_hz(int v) { return 20000.0f * powf(0.1f, (float)v * 0.01f); }
-/* OpenPocket Bass: BASS OCTAVE's TRACK 100..500 Hz */
-static float boct_track_hz(int v) { return 100.0f + (float)(v > 100 ? 100 : v) * 4.0f; }
 /* OpenPocket Bass: BASS CHORUS's X-OVER 50..500 Hz, logarithmic (below it the bass stays dry) */
 static float bch_xo_hz(int v) { return 50.0f * powf(10.0f, (float)(v > 100 ? 100 : v) * 0.01f); }
 int px_param_text(int b, int t, int k, int v, char *buf)
@@ -725,7 +731,6 @@ int px_param_text(int b, int t, int k, int v, char *buf)
         if (t == PX_PIT_HARMONY && k == 0) { put_str(buf, HARM_TXT[harm_idx(v)]); return 1; }
         if (t == PX_PIT_WHAMMY && k == 0) { float st = (x - 0.5f) * 48.0f; put_int(buf, (int)(st + (st >= 0 ? 0.5f : -0.5f)), 1); return 1; }
         if (t == PX_PIT_BASSOCT && k == 3) { put_int(buf, (int)(60.0f + x * 540.0f + 0.5f), 0); return 1; }
-        if (t == PX_PIT_BASSOCT && k == 4) { put_int(buf, (int)(boct_track_hz(v) + 0.5f), 0); return 1; }
         if (t == PX_PIT_DETUNE && k == 0) { put_int(buf, (int)(3.0f + x * 27.0f + 0.5f), 0); return 1; }
         break;
     case PX_B_SFX:
@@ -1056,22 +1061,30 @@ static void rc_pitch(px_engine *e)
         e->oct_dry = f01(q[0]); e->oct_s1 = f01(q[1]) * 2.5f; e->oct_s2 = f01(q[2]) * 2.5f; e->oct_up = f01(q[3]) * 2.0f;
         break;
     case PX_PIT_BASSOCT:                               /* OpenPocket Bass: a flip-flop divider. The tracking filter (two */
-        /* low-passes, oct_ua/ub) follows the note found, at 1.25 x its pitch, from 60 Hz up to TRACK: the fundamental stays
-         * the strongest partial even when the string's 2nd harmonic is louder (the low E and B), so the divider never
-         * counts the harmonic. The trigger fires at 40 % of the held peak (no chatter as the note decays). */
-        bq_lowpass(&e->oct_lp, sr, boct_track_hz(q[4]), 0.6f);
-        pxb.oct_trk = boct_track_hz(q[4]);
-        bq_lowpass(&pxb.oct_ua, sr, 30.0f, 0.6f);
-        pxb.oct_fc = 30.0f;
-        bq_lowpass(&pxb.oct_ub, sr, 30.0f, 0.6f);
-        pxb.oct_pkd = expf(-1.0f / (0.05f * sr));
-        pxb.oct_ak = 1.0f - expf(-1.0f / (0.012f * sr));
+        /* low-passes, oct_ua/ub) sits at 0.8 x the note found, so the fundamental stays the strongest partial even when the
+         * string's 2nd harmonic is louder (the low E and B) and the divider never counts the harmonic. A new note (the
+         * input's fast envelope jumping over its slow one) starts it again from the bottom, 30 Hz, and it climbs by at most
+         * 25 % a period to the note, up to 520 Hz (the G string's 24th fret): from the low B to the top of the neck. The
+         * trigger fires at 40 % of the held peak (no chatter as the note decays); the peaks are forgotten at a new note.
+         * The sub's level follows the input's envelope, the octave up's the filtered note's brought to the input's level. */
+        bq_lowpass(&e->oct_lp, sr, 700.0f, 0.6f);
+        bq_highpass(&pxb.oct_h1, sr, 14.0f, 0.6f);    /* (below the low B: the pluck's slow swell, which a tracking filter */
+        bq_highpass(&pxb.oct_h2, sr, 14.0f, 0.6f);    /* low under a high note would pass, and count, instead of the note) */
+        pxb.oct_trk = 520.0f;
+        if (pxb.oct_fc < 30.0f) {                      /* (first time only: a knob turned mid-note keeps the tracking) */
+            pxb.oct_fc = 30.0f;
+            bq_lowpass(&pxb.oct_ua, sr, 30.0f, 0.6f); bq_lowpass(&pxb.oct_ub, sr, 30.0f, 0.6f);
+        }
+        pxb.oct_pkd = expf(-1.0f / (0.025f * sr));
+        pxb.oct_ak = 1.0f - expf(-1.0f / (0.010f * sr));
+        pxb.oct_fka = 1.0f - expf(-1.0f / (0.001f * sr)); pxb.oct_fkr = 1.0f - expf(-1.0f / (0.030f * sr));
+        pxb.oct_sk = 1.0f - expf(-1.0f / (0.150f * sr));
         bq_lowpass(&e->oct_sublp, sr, 60.0f + f01(q[3]) * 540.0f, 0.7f);   /* the square's edges: 60..600 Hz */
         bq_lowpass(&e->oct_sublp2, sr, 60.0f + f01(q[3]) * 540.0f, 0.5f);
         bq_lowpass(&e->oct_bp, sr, 1200.0f, 0.7f);    /* the octave up: the note's fundamental rectified */
         bq_highpass(&e->oct_uphp, sr, 50.0f, 0.7f);
         pxb.oct_ea = expf(-1.0f / (0.002f * sr)); pxb.oct_er = expf(-1.0f / (0.06f * sr));
-        e->oct_dry = f01(q[0]); e->oct_s1 = f01(q[1]) * 1.6f; e->oct_s2 = 0.0f; e->oct_up = f01(q[2]) * 2.5f;
+        e->oct_dry = f01(q[0]); e->oct_s1 = f01(q[1]) * 1.0f; e->oct_s2 = 0.0f; e->oct_up = f01(q[2]) * 2.5f;   /* (SUB 100: +3 dB on the note) */
         break;
     case PX_PIT_POLYOCT:                               /* two delay-line shifters: -12 and +12 */
         e->ps_nv = 2; e->ps_dry = f01(q[0]);
@@ -1245,6 +1258,9 @@ static void rc_drive(px_engine *e)
 
 static int px_may_load = 1;                            /* v38: 0 in px_engine_knobs (the audio side): no flash reads there */
 /* ---------------------------------------------------------------- NAM (v37) --- */
+#ifndef PX_NAM_NO_FACTORY
+#define PX_NAM_NO_FACTORY PX_BASS                      /* OpenPocket Bass: no factory guitar models (their 88 KB of weights): the user slots */
+#endif
 #include "px_nam_factory.h"                            /* the factory models (tools/mk_nam_factory.py) */
 #if defined(__PI32V2__) && !defined(PX_NAM_POOL)       /* the pedal: the big piece in its "POOL" RAM region */
 #define PX_NAM_POOL __attribute__((section(".pool")))
@@ -1280,6 +1296,9 @@ int px_nam_knob(int m)
 int px_nam_name(int m, char *buf)
 {
     int i = 0;
+#if PX_NAM_NO_FACTORY      /* (no factory weights: those models do not exist; the lists skip them) */
+    if (m >= 0 && m < PX_NAM_NFACT) { buf[0] = 0; return 0; }
+#endif
     if (m >= 0 && m < PX_NAM_NFACT) {
         const char *s = PXN_FNAME[m];
         while (s[i] && i < 11) { buf[i] = s[i]; i++; }
@@ -1309,8 +1328,8 @@ static int nam_load(int m, float *level_db)
 {
     const float *w = 0;
     *level_db = 0.0f;
-#if PX_NAM_NO_FACTORY    /* the Bluetooth audio image (OP_BT=1): the 12 guitar models' weights (88 KB) make room for the radio; the bass
-                         * presets use the user slots. A factory model then loads nothing (the amp is silent, as with an empty slot). */
+#if PX_NAM_NO_FACTORY    /* OpenPocket Bass: no factory guitar models (88 KB of weights; room for the radio too): the bass presets use
+                         * the user slots. A factory model then loads nothing (the amp is silent, as with an empty slot). */
     if (m >= 0 && m < PX_NAM_NFACT) { px_nam_m.ready = 0; return -1; }
 #else
     if (m >= 0 && m < PX_NAM_NFACT) { w = PXN_FW[m]; *level_db = PXN_FLVL[m]; }
@@ -1393,20 +1412,20 @@ void px_nam_fast(void *base, unsigned bytes) { pxn_set_fast((int32_t *)base, byt
  * amps' -23 LUFS (mean over the factory models, measured by tools/level_presets.py's DI) */
 #define PX_NAM_REF_DB (-6.0f)
 static int eq_design(const px_preset_t *p, float sr, px_bq *eq);
-/* OpenPocket Bass: the amp's tone, three bands whose frequencies move (kept in the SFX block's settings 1..3, as LEVEL in
- * its 0th): BASS a low shelf 40..250 Hz, MID a peak (Q 0.7) 200 Hz..1.8 kHz, TREBLE a high shelf 1.5..6 kHz, each +-12 dB;
- * each one's middle (50) is 100 Hz, 600 Hz, 3 kHz. */
+/* OpenPocket Bass: the amp's tone, three bands at fixed frequencies (a bass player's stack: the body, the honk, the
+ * attack): LOW a low shelf at 100 Hz, MID a peak (Q 0.7) at 600 Hz, HIGH a high shelf at 3 kHz, each +-12 dB. (A test
+ * build moved them, kept in the SFX block's settings 1..3: too fiddly on the pedal; those settings are ignored now.) */
 float px_amp_band_hz(int band, int v)
 {
-    const float x = (float)(v < 0 ? 0 : v > 100 ? 100 : v) * 0.01f;
-    return band == 0 ? 40.0f * powf(6.25f, x) : band == 1 ? 200.0f * powf(9.0f, x) : 1500.0f * powf(4.0f, x);
+    (void)v;
+    return band == 0 ? PX_AMP_LOW_HZ : band == 1 ? PX_AMP_MID_HZ : PX_AMP_HIGH_HZ;
 }
 static void amp_tone_design(const px_preset_t *p, float sr, px_bq *t)
 {
-    const uint8_t *q = p->p[PX_B_AMP], *f = p->p[PX_AMP_LVL_B];
-    bq_lowshelf(&t[0], sr, px_amp_band_hz(0, f[1]), (f01(q[2]) - 0.5f) * 24.0f);
-    bq_peak(&t[1], sr, px_amp_band_hz(1, f[2]), 0.7f, (f01(q[3]) - 0.5f) * 24.0f);
-    bq_highshelf(&t[2], sr, px_amp_band_hz(2, f[3]), (f01(q[4]) - 0.5f) * 24.0f);
+    const uint8_t *q = p->p[PX_B_AMP];
+    bq_lowshelf(&t[0], sr, PX_AMP_LOW_HZ, (f01(q[2]) - 0.5f) * 24.0f);
+    bq_peak(&t[1], sr, PX_AMP_MID_HZ, 0.7f, (f01(q[3]) - 0.5f) * 24.0f);
+    bq_highshelf(&t[2], sr, PX_AMP_HIGH_HZ, (f01(q[4]) - 0.5f) * 24.0f);
 }
 /* for the screen's curves (firmware/ui.h): a block's tone filters as the engine makes them (AMP: the three bands; EQ: its
  * type's), and one filter's level in dB at hz, from cos w alone */
@@ -3878,28 +3897,69 @@ PX_HOT void px_engine_part(px_engine *e, const float *in, float *out, int n, int
                     u = bq_run(&e->oct_uphp, u);
                     x = x * e->oct_dry + s1 * e->oct_s1 + s2 * e->oct_s2 + u * e->oct_up;
                 } else if (pit_t == PX_PIT_BASSOCT) {   /* OpenPocket Bass */
-                    const float b = bq_run(&pxb.oct_ub, bq_run(&pxb.oct_ua, bq_run(&e->oct_lp, x)));
+                    const float ax = px_abs(x);
+                    pxb.oct_fe += (ax - pxb.oct_fe) * (ax > pxb.oct_fe ? pxb.oct_fka : pxb.oct_fkr);
+                    pxb.oct_se += (pxb.oct_fe - pxb.oct_se) * pxb.oct_sk;
+                    const float r = bq_run(&pxb.oct_h2, bq_run(&pxb.oct_h1, bq_run(&e->oct_lp, x)));
+                    {   /* the raw period: the note's on the high strings, its 2nd harmonic's on a low string plucked at the
+                         * bridge; a new note starts the tracking filter under it (0.4 / 0.55 x), from where it climbs */
+                        pxb.oct_rp = r > pxb.oct_rp ? r : pxb.oct_rp * pxb.oct_pkd;
+                        pxb.oct_rnk = -r > pxb.oct_rnk ? -r : pxb.oct_rnk * pxb.oct_pkd;
+                        if (pxb.oct_rn < 1 << 20) pxb.oct_rn++;
+                        if (pxb.oct_rprev <= 0.0f && r > 0.4f * pxb.oct_rp) {
+                            const int rt = pxb.oct_rn, rsame = rt > pxb.oct_rt - pxb.oct_rt / 10 && rt < pxb.oct_rt + pxb.oct_rt / 10;
+                            pxb.oct_rprev = 1.0f; pxb.oct_rt = rt; pxb.oct_rn = 0;
+                            ++pxb.oct_rc;
+                            if (rt > (int)(sr / 650.0f) && rt < (int)(sr / 25.0f) && (pxb.oct_rc == 2 || rsame)) {
+                                /* a new note's first whole period, or a raw period seen twice: the tracking filter at least
+                                 * half of it (the raw is the note, or its 2nd harmonic on a low string plucked at the bridge:
+                                 * then the filter sits on the note, and the harmonic is still 24 dB down) */
+                                const float fr = sr / (float)rt;
+                                float fc = (pxb.oct_rc == 2 ? (fr > 100.0f ? 0.55f : 0.4f) : 0.5f) * fr;
+                                fc = fc < 30.0f ? 30.0f : fc > pxb.oct_trk ? pxb.oct_trk : fc;
+                                if (pxb.oct_rc == 2 || fc > pxb.oct_fc * 1.03f) {
+                                    if (pxb.oct_rc == 2) pxb.oct_pk = pxb.oct_nk = 0.0f;
+                                    pxb.oct_fc = fc;
+                                    bq_lowpass(&pxb.oct_ua, sr, fc, 0.6f); bq_lowpass(&pxb.oct_ub, sr, fc, 0.6f);
+                                }
+                            }
+                        } else if (pxb.oct_rprev > 0.0f && r < -0.4f * pxb.oct_rnk) pxb.oct_rprev = -1.0f;
+                    }
+                    if (pxb.oct_hold > 0) pxb.oct_hold--;
+                    else if (pxb.oct_fe > 1.8f * pxb.oct_se + 0.001f) {   /* a new note */
+                        pxb.oct_hold = (int)(0.06f * sr); pxb.oct_se = pxb.oct_fe;   /* (the slow one takes the new level) */
+                        pxb.oct_rp = pxb.oct_rnk = 0.0f; pxb.oct_rc = 0;
+                    }
+                    const float b = bq_run(&pxb.oct_ub, bq_run(&pxb.oct_ua, r));
                     const float a = px_abs(b);
                     pxb.oct_pk = b > pxb.oct_pk ? b : pxb.oct_pk * pxb.oct_pkd;
                     pxb.oct_nk = -b > pxb.oct_nk ? -b : pxb.oct_nk * pxb.oct_pkd;
                     e->oct_env = a + (e->oct_env - a) * (a > e->oct_env ? pxb.oct_ea : pxb.oct_er);
-                    pxb.oct_amp += (e->oct_env - pxb.oct_amp) * pxb.oct_ak;
+                    pxb.oct_amp += (pxb.oct_fe - pxb.oct_amp) * pxb.oct_ak;
                     if (pxb.oct_n < 1 << 20) pxb.oct_n++;
-                    if (e->oct_prev <= 0.0f && b > 0.4f * pxb.oct_pk && pxb.oct_pk > 0.00005f) {
+                    if (e->oct_prev <= 0.0f && b > 0.4f * pxb.oct_pk && pxb.oct_pk > 1e-7f) {
                         e->oct_prev = 1.0f; e->oct_ff = -e->oct_ff;
                         const int T = pxb.oct_n;         /* a period: the tracking filter follows the note */
                         pxb.oct_n = 0;
-                        if (T > (int)(sr / 600.0f) && T < (int)(sr / 25.0f)) {
-                            float fc = 0.8f * sr / (float)T;   /* down at once, up by at most 25 % a period: */
-                            if (fc > pxb.oct_fc * 1.25f) fc = pxb.oct_fc * 1.25f;   /* one harmonic counted by */
-                            if (fc < 30.0f) fc = 30.0f;        /* mistake cannot pull the filter up to it */
+                        const int same = T > pxb.oct_lt - pxb.oct_lt / 10 && T < pxb.oct_lt + pxb.oct_lt / 10;
+                        pxb.oct_lt = T;
+                        if (T > (int)(sr / 650.0f) && T < (int)(sr / 25.0f)) {
+                            float fc = 0.8f * sr / (float)T;   /* up by at most 25 % a period (one harmonic counted by */
+                            if (fc > pxb.oct_fc * 1.25f) fc = pxb.oct_fc * 1.25f;   /* mistake cannot pull the filter */
+                            if (!same && fc < pxb.oct_fc * 0.8f) fc = pxb.oct_fc * 0.8f;   /* up to it); down at once only for */
+                            if (fc < 30.0f) fc = 30.0f;        /* a period seen twice (one trigger missed is not a lower note) */
                             if (fc > pxb.oct_trk) fc = pxb.oct_trk;
-                            pxb.oct_fc = fc;
-                            bq_lowpass(&pxb.oct_ua, sr, fc, 0.6f); bq_lowpass(&pxb.oct_ub, sr, fc, 0.6f);
+                            if (fc > pxb.oct_fc * 1.03f || fc < pxb.oct_fc * 0.97f) {   /* (no retuning for a jitter) */
+                                pxb.oct_fc = fc;
+                                bq_lowpass(&pxb.oct_ua, sr, fc, 0.6f); bq_lowpass(&pxb.oct_ub, sr, fc, 0.6f);
+                            }
                         }
                     } else if (e->oct_prev > 0.0f && b < -0.4f * pxb.oct_nk) e->oct_prev = -1.0f;
                     const float s1 = bq_run(&e->oct_sublp2, bq_run(&e->oct_sublp, e->oct_ff * pxb.oct_amp));
-                    const float u = bq_run(&e->oct_bp, bq_run(&e->oct_uphp, a));
+                    float ug = pxb.oct_amp / (e->oct_env + 1e-5f);   /* the filtered note at the input's level, its */
+                    if (ug > 40.0f) ug = 40.0f;                      /* gain smoothed (the envelopes ripple at the note) */
+                    pxb.oct_ug += (ug - pxb.oct_ug) * pxb.oct_sk;
+                    const float u = bq_run(&e->oct_bp, bq_run(&e->oct_uphp, a * pxb.oct_ug));
                     x = x * e->oct_dry + s1 * e->oct_s1 + u * e->oct_up;
                 } else {
 #if !PX_RUNS                                           /* (with the runs: pitch_run) */

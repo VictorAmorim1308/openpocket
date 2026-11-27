@@ -528,6 +528,16 @@ static void op_stage(uint32_t s, const char *txt)
 
 /* standard quadrature table: index = (old<<2)|new -> -1/0/+1 */
 static const int8_t QDEC[16] = {0,-1,1,0, 1,0,0,-1, -1,0,0,1, 0,1,-1,0};
+/* OpenPocket Bass: the encoder is read by the 10 kHz tick (px_usb.h), not by the main loop, which a graph's redraw holds
+ * for tens of milliseconds: the steps turned meanwhile were lost (the EQ's points hardly moved). enc_acc is the tick's
+ * count of quarter steps (its only writer); the main loop takes whole detents from it. */
+static volatile int32_t enc_acc;
+static uint8_t enc_st;
+static void enc_sample(void)
+{
+    const uint8_t s = (uint8_t)(PC_IN & ENC_MASK);
+    if (s != enc_st) { enc_acc -= QDEC[(enc_st << 2) | s]; enc_st = s; }
+}
 #if AUDIO_PROBE
 #include "audio_probe.h"
 #else
@@ -823,6 +833,9 @@ static void app_main(void)
         ble_test_start();                /* radio on, controller and host up, advertising (the pedal keeps working) */
 #endif
     enc_last = (uint8_t)(PC_IN & ENC_MASK);
+#if !AUDIO_PROBE
+    enc_st = enc_last;
+#endif
     for (;;) {
         uint32_t now = ms_now();
         fm1_wdt_feed();
@@ -890,6 +903,7 @@ static void app_main(void)
 #endif
 
         /* --- encoder (direction inverted: subtract); fast rotation = steps of 5 --- */
+#if AUDIO_PROBE
         uint8_t s = (uint8_t)(PC_IN & ENC_MASK);
         if (s != enc_last) {
             accum -= QDEC[(enc_last << 2) | s];
@@ -901,6 +915,20 @@ static void app_main(void)
                 ui_turn(dd, fast);
             }
         }
+#else
+        {   /* the detents the tick counted since the last pass (several after a long redraw: they count as fast) */
+            const int32_t q = enc_acc - accum;
+            int n = q / 4;
+            if (n) {
+                const int dd = n > 0 ? 1 : -1, fast = (now - t_knob) < 45u || n > 1 || n < -1;
+                accum += n * 4;
+                t_knob = now;
+                if (n > 12) n = 12;
+                if (n < -12) n = -12;
+                for (; n; n -= dd) ui_turn(dd, fast);
+            }
+        }
+#endif
         /* --- buttons (pressed = differs from the idle state) --- */
         uint32_t pa = (PA_IN & 0xFFFFu) ^ base_pa, ph = (PH_IN & 0xFFFFu) ^ base_ph;
         /* debounced: what is held. ui_buttons (ui.h) times the gestures: PUSH, HOME and FX act at a short release or after a

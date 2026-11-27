@@ -45,10 +45,22 @@ static uint8_t *ota_scratch(void) { return nm_stage; }
 #endif
 static struct { uint8_t ok; char name[12]; float level; } nm_cache[PX_NAM_NUSER];
 static uint32_t nm_gen;                          /* bumps when a slot changes */
+/* OpenPocket Bass: a preview (NAM_PREVIEW). The staged model, checked, plays as if slot nm_pv held it, nothing written:
+ * the editor points the sound's AMP at that slot, the player tries it with the amp's tone, then saves it (NAM_COMMIT,
+ * into any slot) or drops it. 0xFF: none. A new upload into the staging buffer ends it (px_editor.h). */
+static uint8_t nm_pv = 0xFFu;
 
 static int nm_hdr_ok(const nm_hdr_t *h)
 {
     return h->magic == NM_MAGIC && h->ver == 1u && h->nw == PXN_NW;
+}
+static int nm_check(void)                        /* the staged model: 0 good, 1 invalid */
+{
+    const nm_hdr_t *h = (const nm_hdr_t *)nm_stage;
+    const uint32_t *w = (const uint32_t *)(nm_stage + NM_HDR);
+    if (!nm_hdr_ok(h)) return 1;
+    for (uint32_t i = 0; i < PXN_NW; i++) if ((w[i] & 0x7F800000u) == 0x7F800000u) return 1;   /* NaN / Inf */
+    return (uint16_t)ota_crc16(nm_stage + NM_HDR, PXN_NW * 4u, 0) != h->crc;
 }
 static void nm_name_clean(char *d, const char *s)
 {
@@ -73,6 +85,13 @@ static void nm_scan(void)
 /* the engine's hook (engine/px_dsp.h): name and level from the cache, the weights from the flash (checked) */
 int px_nam_user(int slot, char *name12, float *level_db, float *w)
 {
+    if (slot >= 0 && slot == (int)nm_pv) {       /* the preview */
+        const nm_hdr_t *h = (const nm_hdr_t *)nm_stage;
+        nm_name_clean(name12, h->name);
+        *level_db = (float)h->level_cdb * 0.01f;
+        if (w) memcpy(w, nm_stage + NM_HDR, PXN_NW * 4u);
+        return 1;
+    }
     if (slot < 0 || slot >= (int)PX_NAM_NUSER || !nm_cache[slot].ok) return 0;
     memcpy(name12, nm_cache[slot].name, 12);
     *level_db = nm_cache[slot].level;
@@ -111,10 +130,7 @@ static int nm_write_piece(uint32_t idx, const uint8_t *packed, uint32_t n)
 static int nm_commit(uint32_t s)
 {
     nm_hdr_t *h = (nm_hdr_t *)nm_stage;
-    const uint32_t *w = (const uint32_t *)(nm_stage + NM_HDR);
-    if (s >= PX_NAM_NUSER || !nm_hdr_ok(h)) return 1;
-    for (uint32_t i = 0; i < PXN_NW; i++) if ((w[i] & 0x7F800000u) == 0x7F800000u) return 1;   /* NaN / Inf */
-    if ((uint16_t)ota_crc16(nm_stage + NM_HDR, PXN_NW * 4u, 0) != h->crc) return 1;
+    if (s >= PX_NAM_NUSER || nm_check()) return 1;
     nm_name_clean(h->name, h->name);
     uint32_t base = NM_BASE + s * NM_SLOT, k;
     int rc = 0;
@@ -134,6 +150,16 @@ static int nm_commit(uint32_t s)
     return rc;
 }
 
+/* OpenPocket Bass: NAM_RENAME: slot s read back into the staging buffer, its name changed, written again (the editor
+ * no longer needs the file for that). 0 ok, 1 invalid (empty slot), 2 flash */
+static int nm_rename(uint32_t s, const char *name)
+{
+    nm_hdr_t *h = (nm_hdr_t *)nm_stage;
+    if (s >= PX_NAM_NUSER || !nm_cache[s].ok) return 1;
+    if (ota_fread(NM_BASE + s * NM_SLOT, nm_stage, NM_BYTES)) return 2;
+    nm_name_clean(h->name, name);
+    return nm_commit(s);
+}
 /* NAM_ERASE: slot s emptied. 0 ok, 1 invalid, 2 flash */
 static int nm_erase(uint32_t s)
 {

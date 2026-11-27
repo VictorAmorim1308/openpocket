@@ -143,8 +143,9 @@ int main(void)
         }
         CHECK(!memcmp(ref, got, sizeof(float) * FR * (NB - 1)), "MIX 50: the pipeline = the plain engine, one block later");
         /* NAM: LEVEL 0 is -12 dB, 25 -6 dB (above 50 this loud test signal meets the output's soft clipper) */
-        CHECK(!strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 1), "GAIN") && !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 3), "MID") &&
-              !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 4), "TREBLE"), "NAM: MODEL, GAIN, BASS, MID, TREBLE (and LEVEL in the SFX block's 1st)");
+        CHECK(!strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 1), "GAIN") && !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 2), "LOW 100 HZ") &&
+              !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 3), "MID 600 HZ") && !strcmp(px_param_name(PX_B_AMP, PX_AMP_NAM, 4), "HIGH 3 KHZ"),
+              "NAM: MODEL, GAIN, LOW 100 HZ, MID 600 HZ, HIGH 3 KHZ (and LEVEL in the SFX block's 1st)");
         double lv[3];
         for (int j = 0; j < 3; j++) {
             bass_preset(&pm, 0, 0, 1); pm.on[PX_B_CAB] = 0; pm.p[PX_AMP_LVL_B][PX_AMP_LVL_K] = (uint8_t)(j * 25);
@@ -161,8 +162,8 @@ int main(void)
         double en = 0; for (int i = 4096; i < FR * NB; i++) en += (double)a[i] * a[i];
         snprintf(m, sizeof m, "NAM GAIN 100: %+.1f dB against 50 (12 dB in, 6 dB taken back: at most +6)", 10 * log10(en + 1e-30) - lv[1]);
         CHECK(10 * log10(en + 1e-30) - lv[1] < 6.5, m);
-        /* the amp's bands move (SFX block 1..3) and the screen's curve (px_tone_bq) is what the sound does: a quiet sine at
-         * 60 Hz and at 1 kHz, BASS +12 at 100 Hz then at 40 Hz, the change measured against the curve's */
+        /* the amp's bands are fixed (a test build moved them with the SFX block's 1..3: that setting changes nothing now) and
+         * px_tone_bq is what the sound does: a quiet sine at 60 Hz and at 1 kHz, LOW +12, with SFX 1 at 50 then at 0 */
         {
             static float si[44100], so0[44100], so1[44100];
             const float fq[2] = {60.0f, 1000.0f};
@@ -176,10 +177,10 @@ int main(void)
                 px_bq f[5]; px_tone_bq(PX_B_AMP, &p1, f);
                 const double want = px_bq_db(&f[0], fq[fi]), got = 10 * log10(e1 / e0);
                 if (fabs(want - got) > 0.6) good = 0;
-                snprintf(why + strlen(why), sizeof why - strlen(why), " %g Hz/%s %.1f:%.1f", fq[fi], bf ? "40" : "100", got, want);
+                snprintf(why + strlen(why), sizeof why - strlen(why), " %g Hz/%s %.1f:%.1f", fq[fi], bf ? "sfx0" : "sfx50", got, want);
             }
-            snprintf(m, sizeof m, "AMP BASS +12 (at 100 then 40 Hz): the sound against the screen's curve, dB%s", why);
-            CHECK(good && px_amp_band_hz(0, 50) > 99.0f && px_amp_band_hz(0, 50) < 101.0f, m);
+            snprintf(m, sizeof m, "AMP LOW +12 at 100 Hz (whatever SFX 1 says): the sound against the curve, dB%s", why);
+            CHECK(good && px_amp_band_hz(0, 0) == 100.0f && px_amp_band_hz(1, 100) == 600.0f && px_amp_band_hz(2, 50) == 3000.0f, m);
         }
         /* a preset that says another amp or cabinet still plays NAM and the USER IR */
         bass_preset(&pm, 100, 0, 1);
@@ -334,19 +335,30 @@ int main(void)
 
     printf("5b. BASS OCTAVE\n");
     {
-        CHECK(!strcmp(px_type_name(PX_B_PITCH, PX_PIT_BASSOCT), "BASS OCTAVE") && px_nparams(PX_B_PITCH, PX_PIT_BASSOCT) == 5,
-              "BASS OCTAVE: its name, 5 settings");
-        static const float HZ[] = {30.87f, 41.20f, 46.25f, 55.00f, 61.74f, 73.42f};
-        static const char *NM[] = {"B0", "E1", "F#1", "A1", "B1", "D2"};
-        static float in[88200], out[88200];
+        CHECK(!strcmp(px_type_name(PX_B_PITCH, PX_PIT_BASSOCT), "BASS OCTAVE") && px_nparams(PX_B_PITCH, PX_PIT_BASSOCT) == 4 &&
+              !strcmp(px_param_name(PX_B_PITCH, PX_PIT_BASSOCT, 3), "SUB TONE"), "BASS OCTAVE: its name, 4 settings (DRY SUB UP SUB TONE)");
+        /* the whole neck: the low B to the G string's 20th fret; each note plucked after a low E that still rings (the
+         * tracking must climb from it), with the 2nd harmonic 12 dB over the fundamental on the low strings */
+        static const float HZ[] = {30.87f, 41.20f, 55.00f, 73.42f, 98.00f, 130.81f, 174.61f, 233.08f, 311.13f};
+        static const char *NM[] = {"B0", "E1", "A1", "D2", "G2", "C3 (G 5th fret)", "F3 (G 10th)", "A#3 (G 15th)", "D#4 (G 20th)"};
+        static float in[132300], out[132300];
         for (unsigned k = 0; k < sizeof HZ / sizeof HZ[0]; k++) {
-            double ph = 0;
-            for (int i = 0; i < 88200; i++) {           /* plucked: 2nd harmonic stronger than the fundamental, decaying */
-                const float env = 0.4f * expf(-(float)i / 40000.0f);
-                /* the fundamental 12 dB under the 2nd harmonic: a bass string plucked near the bridge (the old trigger
-                 * counted the harmonic there and the "octave down" landed on the note played) */
-                in[i] = env * (0.25f * sinf((float)ph) + 1.0f * sinf(2 * (float)ph + 0.7f) + 0.6f * sinf(3 * (float)ph + 1.9f));
-                ph += 2.0 * 3.14159265358979 * HZ[k] / 44100.0;
+            double ph = 0, pe = 0;
+            const float h2 = HZ[k] < 80.0f ? 1.0f : 0.5f, h1 = HZ[k] < 80.0f ? 0.25f : 1.0f;
+            for (int i = 0; i < 132300; i++) {
+                float v = 0;
+                if (i < 44100) {                         /* first 1 s: a low E */
+                    const float en = 0.4f * expf(-(float)i / 40000.0f);
+                    v = en * (0.25f * sinf((float)pe) + 1.0f * sinf(2 * (float)pe + 0.7f) + 0.6f * sinf(3 * (float)pe + 1.9f));
+                    pe += 2.0 * 3.14159265358979 * 41.2 / 44100.0;
+                    if (pe > 6.283185307179586) pe -= 6.283185307179586;   /* (small arguments: px_math.c's sinf) */
+                } else {                                 /* then the note, plucked */
+                    const float en = 0.4f * expf(-(float)(i - 44100) / 40000.0f);
+                    v = en * (h1 * sinf((float)ph) + h2 * sinf(2 * (float)ph + 0.7f) + 0.4f * sinf(3 * (float)ph + 1.9f));
+                    ph += 2.0 * 3.14159265358979 * HZ[k] / 44100.0;
+                    if (ph > 6.283185307179586) ph -= 6.283185307179586;
+                }
+                in[i] = v;
             }
             for (int up = 0; up < 2; up++) {
                 px_preset_t p;
@@ -354,26 +366,27 @@ int main(void)
                 p.on[PX_B_GATE] = 1; p.p[PX_B_GATE][PX_PATCH_LEVEL] = 50;
                 p.on[PX_B_PITCH] = 1; p.type[PX_B_PITCH] = PX_PIT_BASSOCT;
                 p.p[PX_B_PITCH][0] = 0; p.p[PX_B_PITCH][1] = up ? 0 : 100; p.p[PX_B_PITCH][2] = up ? 100 : 0;
-                p.p[PX_B_PITCH][3] = 40; p.p[PX_B_PITCH][4] = HZ[k] > 90.0f ? 60 : 30;
-                run_plain(&p, in, out, 88192);
-                /* Goertzel over the second half: the target (f/2 or 2f) against f, f/2, 2f, 3f/2 */
+                p.p[PX_B_PITCH][3] = 40; p.p[PX_B_PITCH][4] = 0;
+                run_plain(&p, in, out, 132288);
+                /* Goertzel over the note's 0.25..1.25 s: the target (f/2 or 2f) against f, f/2, 2f, 3f/2 */
                 const float tgt = up ? 2.0f * HZ[k] : 0.5f * HZ[k];
                 const float cand[4] = {0.5f * HZ[k], HZ[k], 1.5f * HZ[k], 2.0f * HZ[k]};
                 float pw[4], pt = 0;
                 for (int c = 0; c < 4; c++) {
                     const float w = 2.0f * 3.14159265f * cand[c] / 44100.0f, co = 2.0f * cosf(w);
                     double s0 = 0, s1 = 0, s2 = 0;
-                    for (int i = 44100; i < 88192; i++) { s0 = out[i] + co * s1 - s2; s2 = s1; s1 = s0; }
+                    for (int i = 55125; i < 99225; i++) { s0 = out[i] + co * s1 - s2; s2 = s1; s1 = s0; }
                     pw[c] = (float)(s1 * s1 + s2 * s2 - co * s1 * s2);
                     if (cand[c] == tgt) pt = pw[c];
                 }
                 float other = 0;
                 for (int c = 0; c < 4; c++)                 /* (1.5 f: the sub's own 3rd harmonic, a square's) */
                     if (cand[c] != tgt && !(!up && c == 2) && pw[c] > other) other = pw[c];
-                char m[112];
-                snprintf(m, sizeof m, "%s %.1f Hz, %s: %.1f Hz is %.1f dB above the strongest other", NM[k], HZ[k],
-                         up ? "UP +1" : "SUB -1", tgt, 10 * log10f(pt / (other + 1e-30f)));
-                CHECK(10 * log10f(pt / (other + 1e-30f)) > (up ? -6.0f : 10.0f), m);   /* (before the tracking filter: SUB -35..-43 dB, the note itself) */   /* (an analog octave up is never pure) */
+                const float lv = 20 * log10f(rms(out + 55125, 44100) / (rms(in + 55125, 44100) + 1e-9f));
+                char m[140];
+                snprintf(m, sizeof m, "%s %.1f Hz, %s: %.1f Hz is %.1f dB above the strongest other; level %+.1f dB against the input",
+                         NM[k], HZ[k], up ? "UP +1" : "SUB -1", tgt, 10 * log10f(pt / (other + 1e-30f)), lv);
+                CHECK(10 * log10f(pt / (other + 1e-30f)) > (up ? -6.0f : 10.0f) && lv > -9.0f && lv < 9.0f, m);   /* (an analog octave up is never pure) */
             }
         }
     }
